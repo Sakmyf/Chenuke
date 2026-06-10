@@ -94,11 +94,24 @@ def _collect_signals(module_results: dict) -> list:
             if len(signals) >= 6: return signals
     return signals
 
-def analyze_context(text: str, url: str = "", title: str = ""):
+# Mapeo monotónico riesgo→score (interpolación lineal entre anclas).
+# Amplifica el rango bajo sin invertir el orden: más riesgo => siempre más score.
+_SCORE_ANCHORS = [(0.0, 0), (0.10, 22), (0.25, 50), (0.50, 75), (1.0, 100)]
+
+def _map_risk_to_score(risk: float) -> int:
+    risk = max(0.0, min(risk, 1.0))
+    for (x0, y0), (x1, y1) in zip(_SCORE_ANCHORS, _SCORE_ANCHORS[1:]):
+        if risk <= x1:
+            return int(round(y0 + (risk - x0) * (y1 - y0) / (x1 - x0)))
+    return 100
+
+def analyze_context(text: str, url: str = "", title: str = "", is_ecommerce: bool = False):
     try:
         if not text:
             return {"score": 0, "level": "bajo", "message": "Sin contenido para analizar", "signals": [], "confidence": 0, "engine_version": ENGINE_VERSION}
         context = classify_context(text, url)
+        if is_ecommerce and context == "general":
+            context = "ecommerce"
         source_info = analyze_source(url, text)
         weights = adjust_weights(BASE_WEIGHTS, context, source_info)
         with ThreadPoolExecutor(max_workers=13) as executor:
@@ -118,7 +131,13 @@ def analyze_context(text: str, url: str = "", title: str = ""):
                 "structural": executor.submit(check_structural, text),
                 "commercial_risk": executor.submit(analyze_commercial_risk, text, url),
             }
-            results = {name: future.result(timeout=2.0) for name, future in futures.items()}
+            results = {}
+            for name, future in futures.items():
+                try:
+                    results[name] = future.result(timeout=2.0)
+                except Exception:
+                    traceback.print_exc()
+                    results[name] = None
         scores = {k: _get_score(results[k]) for k in BASE_WEIGHTS.keys()}
         structural_score = sum(scores[k] * weights.get(k, 0.1) for k in scores)
         comm_data = results["commercial_risk"] or {"score": 0}
@@ -129,11 +148,7 @@ def analyze_context(text: str, url: str = "", title: str = ""):
         elif context == "institutional": risk_score -= authority_bonus * 0.5
         else: risk_score -= authority_bonus * 0.25
         risk_score = max(0.0, min(risk_score, 1.0))
-        if risk_score < 0.10: final_score = int(risk_score * 220)
-        elif risk_score < 0.25: final_score = int(risk_score * 260)
-        elif risk_score < 0.50: final_score = int(risk_score * 180)
-        else: final_score = int(risk_score * 120)
-        final_score = max(0, min(final_score, 100))
+        final_score = _map_risk_to_score(risk_score)
         normalized_risk = final_score / 100
         if normalized_risk >= 0.55:
             level = "alto"; message = "Presión narrativa significativa detectada"

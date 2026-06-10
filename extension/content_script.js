@@ -297,7 +297,7 @@ if (!window.__SignalCheckInjected__) {
         injected: true
       });
 
-      return true;
+      return false; // respuesta síncrona: cerrar el puerto evita "message port closed"
     }
 
     try {
@@ -324,6 +324,6 @@ if (!window.__SignalCheckInjected__) {
       });
     }
 
-    return true;
+    return false; // respuesta síncrona: cerrar el puerto evita "message port closed"
   });
 }

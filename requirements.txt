@@ -4,5 +4,3 @@ slowapi
 pydantic
 sqlalchemy
 psycopg2-binary
-slowapi
-slowapi

@@ -140,7 +140,7 @@ function showNotification(title, message, level = "info") {
 // ------------------------------------------------------
 // ANÁLISIS EN BACKGROUND (cuando el popup se cierra)
 // ------------------------------------------------------
-async function runBackgroundAnalysis(tabId, url, text, isEcommerce) {
+async function runBackgroundAnalysis(tabId, url, text, isEcommerce, title = "") {
   const API_URL = "https://gesignalcheck-production-8e78.up.railway.app/v3/verify";
   
   console.log("🔬 Análisis en background iniciado");
@@ -158,6 +158,7 @@ async function runBackgroundAnalysis(tabId, url, text, isEcommerce) {
       body: JSON.stringify({
         text: text,
         url: url,
+        title: title || "",
         is_ecommerce: isEcommerce
       }),
       signal: controller.signal
@@ -217,13 +218,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   
   // Iniciar análisis en background (para cuando el popup se cierra)
   if (message.type === "START_BACKGROUND_ANALYSIS") {
-    const { tabId, url, text, is_ecommerce } = message;
+    const { tabId, url, text, is_ecommerce, title } = message;
     
     // Responder inmediatamente que se recibió
     sendResponse({ accepted: true, tabId });
     
     // Ejecutar en background
-    runBackgroundAnalysis(tabId, url, text, is_ecommerce);
+    runBackgroundAnalysis(tabId, url, text, is_ecommerce, title);
     return true;
   }
   

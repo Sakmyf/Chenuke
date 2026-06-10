@@ -8,6 +8,21 @@ const PRO_URL = "https://gesignalcheck.com/analysis";
 const API_TIMEOUT = 30000; // 30 segundos
 const MAX_RETRIES = 2;
 
+// Headers comunes: incluye x-pro-token si el usuario activó PRO
+async function buildHeaders() {
+  const headers = {
+    "Content-Type": "application/json",
+    "x-extension-id": chrome.runtime.id
+  };
+  try {
+    const stored = await chrome.storage.local.get("pro_token");
+    if (stored && stored.pro_token) {
+      headers["x-pro-token"] = stored.pro_token;
+    }
+  } catch (e) { /* sin token PRO */ }
+  return headers;
+}
+
 function obtenerColorPorcentaje(valor, metrica) {
   const m = String(metrica || "").toLowerCase();
 
@@ -213,13 +228,11 @@ document.addEventListener("DOMContentLoaded", () => {
           try {
             const res = await fetchWithRetry(API_URL, {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "x-extension-id": chrome.runtime.id
-              },
+              headers: await buildHeaders(),
               body: JSON.stringify({
                 text: extracted.text,
                 url: extracted.url || tab.url,
+                title: extracted.title || tab.title || "",
                 is_ecommerce: extracted.is_ecommerce || false
               })
             });
