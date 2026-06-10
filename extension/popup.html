@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SignalCheck</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container" role="main" aria-label="SignalCheck Análisis de Contenido">
+    
+    <!-- HEADER -->
+    <header class="header" role="banner">
+      <h1 id="appTitle">SignalCheck</h1>
+      <p class="subtitle" id="appSubtitle">Análisis estructural del contenido</p>
+    </header>
+
+    <!-- ESTADO DE CARGA / SCAN -->
+    <div 
+      class="scan-line" 
+      id="scanLine" 
+      role="progressbar" 
+      aria-valuemin="0" 
+      aria-valuemax="100" 
+      aria-valuenow="0" 
+      aria-label="Escaneando contenido"
+    ></div>
+
+    <!-- INDICADOR DE CACHÉ (nuevo) -->
+    <div id="cacheBadge" class="cache-badge hidden" role="status" aria-live="polite">
+      <span aria-hidden="true">💾</span> Resultado en caché
+    </div>
+
+    <!-- INDICADOR DE BACKGROUND (nuevo) -->
+    <div id="backgroundBadge" class="background-badge hidden" role="status" aria-live="polite">
+      <span class="spinner-small" aria-hidden="true"></span>
+      Analizando en segundo plano...
+    </div>
+
+    <!-- BADGE DE NIVEL DE RIESGO -->
+    <div 
+      id="labelBadge" 
+      class="signal-label" 
+      role="status" 
+      aria-live="assertive" 
+      aria-atomic="true"
+    >
+      Analizando...
+    </div>
+
+    <!-- SCORE -->
+    <section class="score-container" aria-label="Puntuación de riesgo">
+      <div class="score-main">
+        <span id="scoreValue" aria-label="Puntuación">--</span>
+        <span class="score-label" aria-hidden="true"> /100</span>
+      </div>
+      <div class="confidence">
+        Confianza: <span id="confidenceValue" aria-label="Porcentaje de confianza">--</span>%
+      </div>
+    </section>
+
+    <!-- INSIGHT / RESUMEN -->
+    <section id="summarySection" aria-label="Resumen del análisis">
+      <div id="summary" class="insight-box hidden" role="article"></div>
+    </section>
+
+    <!-- ERROR PERSISTENTE (nuevo) -->
+    <div id="errorBox" class="error-box hidden" role="alert" aria-live="assertive">
+      <span aria-hidden="true">⚠️</span>
+      <span id="errorMessage"></span>
+      <button id="retryErrorBtn" class="retry-btn" aria-label="Reintentar análisis">Reintentar</button>
+    </div>
+
+    <!-- PRO SECTION -->
+    <section 
+      id="proSection" 
+      class="pro-section locked" 
+      aria-label="Funciones premium"
+    >
+      <div id="proWarning" class="warning" role="alert">
+        <span aria-hidden="true">⚠️</span> Hay señales más profundas que no estás viendo
+      </div>
+      
+      <div id="proMetrics" class="hidden" aria-label="Métricas detalladas">
+        <div class="pro-title">Métricas detalladas</div>
+        <ul id="proList" class="pro-list" role="list"></ul>
+      </div>
+      
+      <button 
+        id="upgradeBtn" 
+        class="upgrade-btn" 
+        aria-label="Desbloquear análisis completo"
+      >
+        <span aria-hidden="true">🔓</span> Ver análisis completo
+      </button>
+    </section>
+
+    <!-- ACCIONES -->
+    <footer class="actions" role="contentinfo">
+      <button 
+        id="analyzeBtn" 
+        aria-label="Iniciar nuevo análisis de la página"
+      >
+        Re-analizar página
+      </button>
+      
+      <!-- NUEVO: Botón de limpiar caché (útil para debugging) -->
+      <button 
+        id="clearCacheBtn" 
+        class="secondary-btn hidden" 
+        aria-label="Limpiar caché de análisis"
+      >
+        <span aria-hidden="true">🗑️</span> Limpiar caché
+      </button>
+    </footer>
+
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
