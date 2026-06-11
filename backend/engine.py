@@ -20,7 +20,7 @@ from backend.context_classifier import classify_context
 from backend.weight_engine import adjust_weights
 from backend.confidence_score import compute_confidence
 
-ENGINE_VERSION = "15.2-clean"
+ENGINE_VERSION = "15.4-clean"
 
 BASE_WEIGHTS = {
     "credibility": 0.10, "contradictions": 0.07, "authority": 0.08,
@@ -150,6 +150,42 @@ def analyze_context(text: str, url: str = "", title: str = "", is_ecommerce: boo
         risk_score = max(0.0, min(risk_score, 1.0))
         final_score = _map_risk_to_score(risk_score)
         normalized_risk = final_score / 100
+
+        # --- Texto insuficiente para análisis estructural (honestidad epistémica) ---
+        # Un texto muy corto no da material para evaluar CÓMO está construido el
+        # mensaje. En vez de inventar un score sobre poca evidencia, se abstiene.
+        # EXCEPCIÓN (opción B): si pese a ser corto hay señales fuertes de presión
+        # (urgencia, promesas, manipulación, riesgo comercial), se emite una ALERTA
+        # cualitativa —no un score— para proteger al usuario de estafas breves.
+        MIN_CHARS_FOR_STRUCTURAL = 280
+        clean_len = len((text or "").strip())
+        if clean_len < MIN_CHARS_FOR_STRUCTURAL:
+            alarm = max(
+                scores.get("urgency", 0), scores.get("promises", 0),
+                scores.get("narrative_patterns", 0), scores.get("emotions", 0),
+            )
+            commercial_alarm = comm_data.get("level") in ("medio", "alto")
+            if alarm >= 0.4 or commercial_alarm:
+                signals_short = _collect_signals({k: results[k] for k in results if k != "commercial_risk"})
+                if commercial_alarm:
+                    signals_short.append({"label": "Riesgo comercial", "detail": comm_data.get("summary", ""), "module": "commercial_risk"})
+                return {
+                    "score": None, "level": "alerta_breve",
+                    "message": "Texto breve con señales de presión — precaución",
+                    "insight": "El contenido es demasiado corto para un análisis estructural completo, pero se detectaron señales de presión o manipulación. Leé con cautela.",
+                    "signals": signals_short[:6], "confidence": None,
+                    "context": context, "source_type": source_info.get("type", "unknown"),
+                    "commercial_risk": comm_data, "engine_version": ENGINE_VERSION, "pro": {},
+                }
+            return {
+                "score": None, "level": "insuficiente",
+                "message": "Texto insuficiente para análisis estructural",
+                "insight": "El contenido es demasiado corto para evaluar de forma confiable cómo está construido el mensaje. SignalCheck se abstiene en vez de dar un resultado injustificado.",
+                "signals": [], "confidence": None,
+                "context": context, "source_type": source_info.get("type", "unknown"),
+                "commercial_risk": comm_data, "engine_version": ENGINE_VERSION, "pro": {},
+            }
+
         if normalized_risk >= 0.55:
             level = "alto"; message = "Presión narrativa significativa detectada"
         elif normalized_risk >= 0.20:

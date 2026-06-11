@@ -314,6 +314,44 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    // Texto insuficiente para análisis estructural: abstención honesta, sin score.
+    if (level === "insuficiente") {
+      labelBadge.textContent = "⚪ Texto insuficiente";
+      labelBadge.style.background = "rgba(148,163,184,0.18)";
+      labelBadge.style.color = "#cbd5e1";
+      if (scoreEl) scoreEl.textContent = "—";
+      if (confEl) confEl.textContent = "—";
+      if (summaryBox) {
+        summaryBox.textContent = analysis.insight || analysis.message ||
+          "El contenido es demasiado corto para un análisis estructural confiable.";
+        summaryBox.classList.remove("hidden");
+      }
+      if (proSection) proSection.classList.add("locked");
+      if (proWarning) proWarning.style.display = "none";
+      if (upgradeBtn) upgradeBtn.style.display = "none";
+      if (proMetrics) proMetrics.classList.add("hidden");
+      return;
+    }
+
+    // Texto breve PERO con señales de presión: alerta cualitativa, sin score numérico.
+    if (level === "alerta_breve") {
+      labelBadge.textContent = "⚠️ Texto breve — precaución";
+      labelBadge.style.background = "rgba(250,204,21,0.18)";
+      labelBadge.style.color = "#facc15";
+      if (scoreEl) scoreEl.textContent = "!";
+      if (confEl) confEl.textContent = "—";
+      if (summaryBox) {
+        summaryBox.textContent = analysis.insight || analysis.message ||
+          "Texto corto con señales de presión. Leé con cautela.";
+        summaryBox.classList.remove("hidden");
+      }
+      if (proSection) proSection.classList.add("locked");
+      if (proWarning) proWarning.style.display = "none";
+      if (upgradeBtn) upgradeBtn.style.display = "none";
+      if (proMetrics) proMetrics.classList.add("hidden");
+      return;
+    }
+
     if (level === "bajo" || level === "green") {
       labelBadge.textContent = "🟢 Bajo riesgo";
       labelBadge.style.background = "rgba(34,197,94,0.2)";

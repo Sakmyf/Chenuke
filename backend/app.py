@@ -7,7 +7,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 logger = logging.getLogger(__name__)
-ENGINE_VERSION = "15.2-clean"
+ENGINE_VERSION = "15.4-clean"
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 PRO_TOKEN_SECRET = os.getenv("PRO_TOKEN_SECRET", "")
 
@@ -121,12 +121,13 @@ async def verify(req: VerifyRequest, request: Request):
 
     try:
         result = analyze_context(req.text, req.url, req.title, req.is_ecommerce)
+        raw_score = result.get("score", 0)
         analysis_data = {
-            "structural_index": int(result.get("score", 0)),
+            "structural_index": int(raw_score) if raw_score is not None else None,
             "level": result.get("level", "medio"),
             "message": result.get("message", "Análisis completado"),
             "signals": result.get("signals", []),
-            "confidence": float(result.get("confidence", 0)),
+            "confidence": (float(result.get("confidence")) if result.get("confidence") is not None else None),
             "insight": result.get("insight", result.get("message", "Análisis completado")),
             "pro": result.get("pro", {}),
             "metrics": (result.get("pro") or {}).get("metrics") or {},
@@ -136,7 +137,8 @@ async def verify(req: VerifyRequest, request: Request):
         if DB_AVAILABLE and SessionLocal:
             db = SessionLocal()
             try:
-                log = AnalysisLog(analysis_key=analysis_key, engine_version=ENGINE_VERSION, level=analysis_data["level"], risk_index=analysis_data["structural_index"] / 100, response_json=json.dumps(full_response))
+                ri = (analysis_data["structural_index"] / 100) if analysis_data["structural_index"] is not None else None
+                log = AnalysisLog(analysis_key=analysis_key, engine_version=ENGINE_VERSION, level=analysis_data["level"], risk_index=ri, response_json=json.dumps(full_response))
                 db.add(log); db.commit()
             except Exception as e:
                 logger.warning(f"No se pudo guardar en cache: {e}")
