@@ -7,7 +7,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 logger = logging.getLogger(__name__)
-ENGINE_VERSION = "15.1-clean"
+ENGINE_VERSION = "15.2-clean"
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 PRO_TOKEN_SECRET = os.getenv("PRO_TOKEN_SECRET", "")
 
@@ -29,6 +29,13 @@ except Exception as e:
     ENGINE_AVAILABLE = False
     def analyze_context(text, url, title="", is_ecommerce=False):
         return {"score": 50, "level": "medio", "message": "Engine no disponible (modo fallback)", "signals": [], "confidence": 0.5, "pro": {}}
+
+try:
+    from backend.content_filter import is_explicit_content
+except Exception as e:
+    logger.warning(f"Filtro de contenido no disponible: {e}")
+    def is_explicit_content(url="", title="", text=""):
+        return False
 
 try:
     from backend.database import SessionLocal
@@ -77,6 +84,24 @@ async def verify(req: VerifyRequest, request: Request):
         raise HTTPException(status_code=401, detail="Extensión no autorizada")
     if len(req.text) > 20_000:
         raise HTTPException(status_code=400, detail="Texto demasiado largo")
+
+    # --- Privacidad por diseño (ETHICS.md §2.4) ---
+    # Contenido sexual explícito: NO se analiza, NO se cachea, NO se loguea la URL.
+    # Se devuelve un estado neutral de abstención, sin generar analysis_key.
+    if is_explicit_content(req.url, req.title, req.text):
+        return {
+            "status": "skipped",
+            "meta": {"plan": resolve_plan(request), "timestamp": int(time.time()), "cached": False, "skipped_reason": "private_content"},
+            "analysis": {
+                "structural_index": None,
+                "level": "none",
+                "message": "Contenido no analizado por privacidad",
+                "insight": "SignalCheck no analiza ni registra páginas de contenido privado/adulto.",
+                "signals": [], "confidence": None, "pro": {}, "metrics": None,
+            },
+            "analysis_key": None,
+        }
+
     analysis_key = generate_analysis_key(req.url, req.text)
     plan = resolve_plan(request)
 
