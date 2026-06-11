@@ -87,65 +87,55 @@ if (!window.__SignalCheckInjected__) {
 
   // ------------------------------------------------------
   // EXTRACCIÓN INTELIGENTE DEL BODY
+  // Estrategia: clonar el body, quitar ruido (nav/ads/scripts),
+  // y recolectar texto de bloques de contenido (incluye <p>, <td>,
+  // <li>, headings) — robusto para layouts viejos con tablas anidadas
+  // donde el texto está fragmentado en muchas celdas chicas.
   // ------------------------------------------------------
   function extractSmartBodyText() {
-    const candidates = [];
+    const clone = document.body.cloneNode(true);
 
-    const walker = document.createTreeWalker(
-      document.body,
-      NodeFilter.SHOW_ELEMENT,
-      null,
-      false
+    // Quitar ruido estructural antes de leer texto.
+    const noise = clone.querySelectorAll(
+      "script,style,noscript,svg,iframe,nav,header,footer,aside,form," +
+      "button,[role='navigation'],[role='banner'],[role='complementary']," +
+      ".nav,.menu,.navbar,.sidebar,.footer,.header,.ads,.advertisement," +
+      ".banner,.popup,.cookie-banner,.breadcrumb,.menu-lateral"
+    );
+    noise.forEach((el) => el.remove());
+
+    // Bloques de contenido textual. Se incluyen celdas de tabla (td/th)
+    // y items de lista, porque los sitios .asp viejos maquetan con tablas.
+    const blocks = clone.querySelectorAll(
+      "p,td,th,li,h1,h2,h3,h4,h5,h6,blockquote,article,section,dd,dt,span"
     );
 
-    let node;
+    const seen = new Set();
+    const parts = [];
 
-    while ((node = walker.nextNode())) {
-      const tag = node.tagName.toLowerCase();
-
-      if (
-        ["script", "style", "nav", "header", "footer", "aside", "form"].includes(tag)
-      ) {
-        continue;
+    blocks.forEach((el) => {
+      // Saltar contenedores que envuelven a otros bloques (evita duplicar
+      // el mismo texto del padre y del hijo).
+      if (el.querySelector("p,td,th,li,h1,h2,h3,h4,h5,h6,blockquote,article,section")) {
+        return;
       }
-
-      const text = node.innerText || "";
-      const children = node.children.length;
-
-      if (text.length > 100 && children < 50) {
-        candidates.push({
-          element: node,
-          textLength: text.length,
-          density: text.length / Math.max(children, 1)
-        });
+      const txt = normalizeText(el.innerText || el.textContent || "");
+      // Umbral bajo (>20) para no perder celdas/títulos cortos legítimos,
+      // pero filtra ruido de 1-2 palabras (botones, etiquetas sueltas).
+      if (txt.length > 20 && !seen.has(txt)) {
+        seen.add(txt);
+        parts.push(txt);
       }
+    });
+
+    let combined = parts.join(" ");
+
+    // Red de seguridad: si aún quedó poco, usar el innerText completo del body.
+    if (combined.length < 200) {
+      combined = normalizeText(clone.innerText || document.body.innerText || "");
     }
 
-    candidates.sort((a, b) => b.density - a.density);
-
-    let combinedText = "";
-    const used = new Set();
-
-    for (const candidate of candidates.slice(0, 5)) {
-      let parent = candidate.element.parentElement;
-      let isDuplicate = false;
-
-      while (parent) {
-        if (used.has(parent)) {
-          isDuplicate = true;
-          break;
-        }
-
-        parent = parent.parentElement;
-      }
-
-      if (!isDuplicate) {
-        used.add(candidate.element);
-        combinedText += " " + (candidate.element.innerText || "");
-      }
-    }
-
-    return combinedText;
+    return combined;
   }
 
   // ------------------------------------------------------
@@ -260,7 +250,11 @@ if (!window.__SignalCheckInjected__) {
         }
       }
 
-      if (!text || text.length < 200) {
+      if (!text || text.length < 120) {
+        const smart = normalizeText(extractSmartBodyText());
+        if (smart.length > text.length) text = smart;
+      }
+      if (!text || text.length < 120) {
         text = normalizeText(document.body.innerText || "");
       }
 

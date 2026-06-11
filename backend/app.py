@@ -7,7 +7,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 logger = logging.getLogger(__name__)
-ENGINE_VERSION = "15.4-clean"
+ENGINE_VERSION = "15.5-clean"
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 PRO_TOKEN_SECRET = os.getenv("PRO_TOKEN_SECRET", "")
 
