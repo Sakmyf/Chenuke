@@ -20,7 +20,7 @@ from backend.context_classifier import classify_context
 from backend.weight_engine import adjust_weights
 from backend.confidence_score import compute_confidence
 
-ENGINE_VERSION = "15.5-clean"
+ENGINE_VERSION = "15.6-clean"
 
 BASE_WEIGHTS = {
     "credibility": 0.10, "contradictions": 0.07, "authority": 0.08,
@@ -186,7 +186,7 @@ def analyze_context(text: str, url: str = "", title: str = "", is_ecommerce: boo
                 "commercial_risk": comm_data, "engine_version": ENGINE_VERSION, "pro": {},
             }
 
-        if normalized_risk >= 0.55:
+        if normalized_risk >= 0.60:
             level = "alto"; message = "Presión narrativa significativa detectada"
         elif normalized_risk >= 0.20:
             level = "medio"; message = "Señales mixtas — lectura crítica recomendada"
