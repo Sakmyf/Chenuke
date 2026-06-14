@@ -46,23 +46,41 @@ def check_promises(text: str) -> RuleResult:
         result.evidence.append(f"Promesa absoluta detectada ({len(matched)} señales)")
 
     # --- Detección de scam de enriquecimiento ---
+    # IMPORTANTE: "invertir", "dinero", "beneficios" son palabras del lenguaje
+    # económico NORMAL. Una nota que explica "cuánto cuesta abrir una franquicia"
+    # o una página de gobierno que ofrece "beneficios" NO es una estafa. El scam
+    # real combina: invitación a ganar dinero fácil + GATILLO DE ACCIÓN URGENTE.
+    # Por eso exigimos el núcleo (wealth) MÁS un acompañante, nunca wealth solo.
     has_wealth = any(re.search(p, t) for p in WEALTH_LURE)
     has_urgency = any(re.search(p, t) for p in URGENCY_LURE)
     has_figure = any(re.search(p, t) for p in BIG_FIGURE)
-    if has_wealth:
-        # Invitación a ganar dinero ya es señal. Si además hay urgencia o una
-        # cifra deslumbrante, el patrón de estafa de inversión es inequívoco.
-        lure_score = 0.45
-        lure_signals = ["Invitación a ganar/invertir dinero"]
-        if has_urgency:
-            lure_score += 0.30
-            lure_signals.append("urgencia de acción")
-        if has_figure:
-            lure_score += 0.25
-            lure_signals.append("cifra deslumbrante")
-        result.points += min(lure_score, 1.0)
+    # El núcleo "ganar dinero fácil" (sin contexto de costo/análisis) es lo que
+    # distingue al scam. Frases como "ganar dinero desde tu casa", "ingresos
+    # pasivos", "empezá a ganar" son la firma; "invertir para poner una franquicia"
+    # no lo es. Requerimos núcleo fuerte + al menos un acompañante (urgencia/cifra).
+    strong_wealth = any(re.search(p, t) for p in [
+        r"\bingresos? (pasivos?|garantizados?)\b",
+        r"\b(ganar|gana|generar)\b[^.]{0,25}\bdinero\b[^.]{0,30}\b(casa|fácil|rápido|online|sin (salir|trabajar))\b",
+        r"\bempez(á|a) (ya|ahora|hoy)\b[^.]{0,30}\b(ganar|invertir|generar)\b",
+        r"\bmake money\b", r"\bpassive income\b", r"\bget rich\b",
+        r"\bgan(á|a|e) (hasta|más de)\b[^.]{0,20}(\$|usd|dólares|euros)",
+    ])
+    # Scam confirmado: núcleo fuerte de "dinero fácil" + acompañante de presión.
+    is_wealth_scam = strong_wealth and (has_urgency or has_figure)
+    if is_wealth_scam:
+        lure_signals = ["Promesa de dinero fácil"]
+        lure_score = 0.55
+        if has_urgency: lure_signals.append("urgencia de acción")
+        if has_figure: lure_signals.append("cifra deslumbrante")
+        result.points += min(lure_score + 0.15, 1.0)
         result.reasons.append("wealth_lure_pattern")
         result.evidence.append("Patrón de promesa de enriquecimiento: " + ", ".join(lure_signals))
+    elif has_wealth and (has_urgency and has_figure):
+        # Señal más débil (wealth genérico) pero con DOBLE acompañante: sospechoso,
+        # sin piso automático — suma puntos y deja que el resto del motor decida.
+        result.points += 0.30
+        result.reasons.append("possible_wealth_lure")
+        result.evidence.append("Lenguaje de ganancia con urgencia y cifras — revisar")
     return result
 
 def analyze(text: str):

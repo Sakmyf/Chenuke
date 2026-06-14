@@ -20,7 +20,7 @@ from backend.context_classifier import classify_context
 from backend.weight_engine import adjust_weights
 from backend.confidence_score import compute_confidence
 
-ENGINE_VERSION = "15.8-clean"
+ENGINE_VERSION = "15.9-clean"
 
 BASE_WEIGHTS = {
     "credibility": 0.10, "contradictions": 0.07, "authority": 0.08,
@@ -158,7 +158,7 @@ def analyze_context(text: str, url: str = "", title: str = "", is_ecommerce: boo
         # para commercial_risk, generalizado a la promesa de enriquecimiento.)
         promises_reasons = normalize_result(results.get("promises"))["reasons"]
         if "wealth_lure_pattern" in promises_reasons:
-            risk_score = max(risk_score, 0.62)   # piso → rojo: scam de inversión
+            risk_score = max(risk_score, 0.60)   # piso → rojo: scam de inversión confirmado
         if comm_data.get("level") == "alto":
             risk_score = max(risk_score, 0.62)   # piso → rojo: pedido de pago/datos
 
