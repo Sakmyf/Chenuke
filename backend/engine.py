@@ -20,7 +20,7 @@ from backend.context_classifier import classify_context
 from backend.weight_engine import adjust_weights
 from backend.confidence_score import compute_confidence
 
-ENGINE_VERSION = "15.7-clean"
+ENGINE_VERSION = "15.8-clean"
 
 BASE_WEIGHTS = {
     "credibility": 0.10, "contradictions": 0.07, "authority": 0.08,
@@ -148,6 +148,20 @@ def analyze_context(text: str, url: str = "", title: str = "", is_ecommerce: boo
         elif context == "institutional": risk_score -= authority_bonus * 0.5
         else: risk_score -= authority_bonus * 0.25
         risk_score = max(0.0, min(risk_score, 1.0))
+
+        # --- Piso de riesgo para señales CRÍTICAS de fraude ---
+        # Algunas señales no deben promediarse: una promesa de enriquecimiento o un
+        # pedido de transferencia son de alto riesgo POR SÍ SOLAS, aunque el resto
+        # del texto sea sobrio. Sin esto, un scam "prolijo" (sin urgencia chillona)
+        # se diluye entre 12 módulos que dan 0. El piso garantiza que estas señales
+        # lleguen al usuario como riesgo significativo. (Mismo principio que ya rige
+        # para commercial_risk, generalizado a la promesa de enriquecimiento.)
+        promises_reasons = normalize_result(results.get("promises"))["reasons"]
+        if "wealth_lure_pattern" in promises_reasons:
+            risk_score = max(risk_score, 0.62)   # piso → rojo: scam de inversión
+        if comm_data.get("level") == "alto":
+            risk_score = max(risk_score, 0.62)   # piso → rojo: pedido de pago/datos
+
         final_score = _map_risk_to_score(risk_score)
         normalized_risk = final_score / 100
 
