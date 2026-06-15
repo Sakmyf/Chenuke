@@ -1,7 +1,7 @@
 import re
 from backend.Analysis.rules_types import RuleResult
 
-SERIOUS_CLAIMS = [r"\bfraude\b", r"\bestafa\b", r"\bcorrupción\b", r"\bmanipulación\b", r"\bengaño\b", r"\bilegal\b"]
+SERIOUS_CLAIMS = [r"\bfraude\b", r"\bestafa\b", r"\bcorrupción\b", r"\bengaño\b", r"\bilegal\b"]
 CONSPIRACY_PATTERNS = [r"no quieren que sepas", r"te están ocultando", r"nadie habla de", r"verdad oculta"]
 CATEGORICAL_PATTERNS = [r"es un hecho", r"está probado", r"sin dudas", r"queda demostrado"]
 ATTRIBUTION_PATTERNS = [r"según", r"dijo", r"informó", r"declaró", r"reportó", r"informe", r"de acuerdo con"]
