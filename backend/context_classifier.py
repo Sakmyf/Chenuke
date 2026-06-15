@@ -97,6 +97,8 @@ def _structure_profile(text: str):
     }
 
 
+_INSTITUTIONAL_TLDS = (".gob.ar", ".gov.ar", ".edu.ar", ".gob", ".gov", ".edu", ".int", ".org.ar")
+
 def classify_context(text: str, url: str = "") -> str:
     host = _host(url)
     u = (url or "").lower()
@@ -108,6 +110,13 @@ def classify_context(text: str, url: str = "") -> str:
         return "social"
     if _host_matches(host, _FACTCHECK_DOMAINS):
         return "fact_check"
+
+    # 2) TLD institucional verificado → clasificación directa de alta confianza.
+    # .gob.ar, .gov, .edu, etc. son dominios con registro controlado. No hace
+    # falta análisis estructural: la forma del texto en un trámite o portal
+    # gubernamental no tiene por qué incluir "ministerio" o "decreto".
+    if any(host.endswith(tld) for tld in _INSTITUTIONAL_TLDS):
+        return "institutional"
 
     p = _structure_profile(text)
 
@@ -135,9 +144,5 @@ def classify_context(text: str, url: str = "") -> str:
     # 6) SALUD/CIENCIA: temática médica con cuerpo de texto.
     if p["health_hits"] >= 2 and p["long_sentences"] >= 2:
         return "health_science"
-
-    # 7) Respaldo por dominio para institucional (pista débil, último recurso).
-    if any(host.endswith(tld) or tld + "." in host for tld in (".gob", ".gov", ".edu", ".int")):
-        return "institutional"
 
     return "general"

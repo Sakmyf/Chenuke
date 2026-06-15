@@ -20,7 +20,7 @@ from backend.context_classifier import classify_context
 from backend.weight_engine import adjust_weights
 from backend.confidence_score import compute_confidence
 
-ENGINE_VERSION = "15.11-clean"
+ENGINE_VERSION = "15.12-clean"
 
 BASE_WEIGHTS = {
     "credibility": 0.10, "contradictions": 0.07, "authority": 0.08,
@@ -144,7 +144,9 @@ def analyze_context(text: str, url: str = "", title: str = "", is_ecommerce: boo
         commercial_score = min(0.20, (comm_data.get("score", 0) / 10) * 0.4)
         risk_score = structural_score + commercial_score
         authority_bonus = min(normalize_result(results["authority"])["trust_bonus"], 0.15)
-        if source_info.get("type") == "institutional": risk_score -= authority_bonus * 0.8
+        if source_info.get("type") == "institutional":
+            risk_score = max(0.0, risk_score - 0.12)   # descuento base: dominio verificado
+            risk_score -= authority_bonus * 0.8
         elif context == "institutional": risk_score -= authority_bonus * 0.5
         else: risk_score -= authority_bonus * 0.25
         risk_score = max(0.0, min(risk_score, 1.0))
