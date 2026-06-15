@@ -38,7 +38,10 @@ BIG_FIGURE = [
 
 def check_promises(text: str) -> RuleResult:
     result = RuleResult()
-    t = (text or "").lower()
+    # Colapsar saltos de línea y espacios múltiples: las landings parten frases
+    # en varias líneas ("Empieza a\ninvertir y a ganar dinero") y eso rompía el
+    # matcheo de patrones que esperan secuencias en una línea continua.
+    t = re.sub(r"\s+", " ", (text or "").lower()).strip()
     matched = [p for p in PROMISE_PATTERNS if re.search(p, t)]
     if matched:
         result.points += min(0.8 + (len(matched) - 1) * 0.1, 1.0)
@@ -60,8 +63,14 @@ def check_promises(text: str) -> RuleResult:
     # no lo es. Requerimos núcleo fuerte + al menos un acompañante (urgencia/cifra).
     strong_wealth = any(re.search(p, t) for p in [
         r"\bingresos? (pasivos?|garantizados?)\b",
+        r"\bingresos?\b[^.]{0,30}\b(a corto plazo|en \d+ (días?|semanas?|meses?))\b",
+        r"\bcalcul(á|a)\b[^.]{0,25}\b(ingresos?|ganancias?)\b",      # "calcula tus ingresos potenciales"
         r"\b(ganar|gana|generar)\b[^.]{0,25}\bdinero\b[^.]{0,30}\b(casa|fácil|rápido|online|sin (salir|trabajar))\b",
+        r"\bempez(á|a|ar)\b[^.]{0,15}\b(invertir|ganar|generar)\b[^.]{0,20}\bdinero\b",  # "empieza a invertir y a ganar dinero"
+        r"\b(invertir|invest)\b[^.]{0,10}\b(y a |and )?(ganar|gana|earn)\b[^.]{0,15}\bdinero\b",
+        r"\bingreso anual de\b",                                      # "beneficios del ingreso anual de Coca-Cola" (marca usurpada)
         r"\bempez(á|a) (ya|ahora|hoy)\b[^.]{0,30}\b(ganar|invertir|generar)\b",
+        r"\b(monto|inversión) mínim[oa]\b[^.]{0,30}(\$|\d)",
         r"\bmake money\b", r"\bpassive income\b", r"\bget rich\b",
         r"\bgan(á|a|e) (hasta|más de)\b[^.]{0,20}(\$|usd|dólares|euros)",
     ])
