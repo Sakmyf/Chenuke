@@ -20,7 +20,7 @@ from backend.context_classifier import classify_context
 from backend.weight_engine import adjust_weights
 from backend.confidence_score import compute_confidence
 
-ENGINE_VERSION = "15.14-clean"
+ENGINE_VERSION = "15.16-clean"
 
 BASE_WEIGHTS = {
     "credibility": 0.10, "contradictions": 0.07, "authority": 0.08,
@@ -129,7 +129,7 @@ def analyze_context(text: str, url: str = "", title: str = "", is_ecommerce: boo
                 "promises": executor.submit(check_promises, text),
                 "uncertainty": executor.submit(detect_uncertainty, text, title, context),
                 "structural": executor.submit(check_structural, text),
-                "commercial_risk": executor.submit(analyze_commercial_risk, text, url),
+                "commercial_risk": executor.submit(analyze_commercial_risk, text, url, context),
             }
             results = {}
             for name, future in futures.items():
