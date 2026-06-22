@@ -26,35 +26,14 @@
   "permissions": [
     "activeTab",
     "scripting",
-    "tabs",
     "storage",
     "notifications",
     "alarms"
   ],
 
   "host_permissions": [
-    "<all_urls>",
     "https://gesignalcheck-production-8e78.up.railway.app/*",
     "https://gesignalcheck.com/*"
-  ],
-
-  "content_scripts": [
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "exclude_matches": [
-        "https://*.google.com/search*",
-        "https://*.bing.com/search*",
-        "https://*.duckduckgo.com/*"
-      ],
-      "js": [
-        "content_script.js"
-      ],
-      "run_at": "document_end",
-      "all_frames": false,
-      "match_about_blank": false
-    }
   ],
 
   "web_accessible_resources": [
@@ -63,7 +42,7 @@
         "icons/*.png"
       ],
       "matches": [
-        "<all_urls>"
+        "https://*/*"
       ]
     }
   ],

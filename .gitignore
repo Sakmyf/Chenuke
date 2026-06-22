@@ -1,5 +1,37 @@
+# ===== PYTHON =====
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
 .env
 .venv/
 venv/
+env/
+*.egg-info/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# ===== EXTENSIÓN (JS/TS) =====
+node_modules/
+dist/
+build/
+*.zip
+*.crx
+*.pem
+
+# ===== DOCKER & DEPLOY =====
+*.log
+docker-compose.override.yml
+
+# ===== EDITORES & SO =====
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ===== PROYECTO =====
+# Si tienes archivos de subida o temporales locales
+uploads/
+temp/

@@ -1,126 +1,29 @@
-\# GE SIGNALCHECK – VERSION LOG
-
-
 
 ---
 
-
-
-\## v7.0 – 16/02/2026
-
-\- Motor heurístico estable
-
-\- Detección de uppercase retórico contextualizada
-
-\- Fórmula de riesgo estabilizada
-
-\- Endpoint `/v1/verify` consolidado
-
-\- Safe-mode sin texto (retorno green)
-
-\- CORS habilitado para extensión Chrome
-
-\- Deployment estable en Railway
-
-\- Healthcheck `/health` operativo
-
-
-
----
-
-
-
-\## v7.1 – 16/02/2026
-
-\- Refactor completo a endpoint `/v3/verify`
-
-\- Separación clara de motores:
-
-&nbsp; - Structural Engine
-
-&nbsp; - Rhetorical Engine
-
-&nbsp; - Narrative Engine
-
-&nbsp; - Absence Engine
-
-\- Ajuste fino de ponderaciones heurísticas
-
-\- Penalización contextual de uppercase (no afecta dominios institucionales)
-
-\- Clasificación formal de dominio (institutional / media / social / satire / unknown)
-
-\- Factor correctivo para traditional\_media
-
-\- Clamp final de risk\_index (0–1)
-
-\- Respuesta API estructurada:
-
-&nbsp; - trust\_score
-
-&nbsp; - rhetorical\_score
-
-&nbsp; - narrative\_score
-
-&nbsp; - absence\_of\_source\_score
-
-&nbsp; - risk\_index
-
-&nbsp; - context\_warning
-
-&nbsp; - details
-
-
-
----
-
-
-
-\## v7.2 – En desarrollo
-
-\- Ajuste dinámico de umbrales de riesgo
-
-\- Preparación para módulo de análisis ampliado (modo pago)
-
-\- Estructura lista para integrar feedback anónimo
-
-\- Preparación para arquitectura híbrida (Heurístico + LLM opcional)
-
-
-
----
-
-
-
-\## Próxima Etapa – v8.0
-
-\- Integración OpenAI como motor complementario
-
-\- Análisis semántico contextual opcional
-
-\- Generación de explicación ampliada automática
-
-\- Modo transparente (desglose completo del score)
-
-\- Arquitectura híbrida modular
-
-
-
----
-
-
-
-\## Estado actual
-
-
-
-El sistema funciona completamente en modo heurístico determinístico.
-
-No depende de ML.
-
-No realiza verificación factual.
-
-Analiza patrones estructurales del discurso digital.
-
-
-
+### 3. `02_VERSION_LOG.md.md`
+```markdown
+# GE SIGNALCHECK – VERSION LOG
+
+## v15.1 – Hardening & Optimización (Sesión 2)
+- **Backend**: Fix de 12 bugs críticos (Event loop bloqueado, timing attacks, pesos no renormalizados, conexiones zombie DB).
+- **Backend**: Cableado completo de contextos (añadido `ecommerce`, `politics`, `opinion`, `news`).
+- **Backend**: ~80+ regex precompilados, type hints, logger estructurado.
+- **Extensión**: Migración a inyección dinámica (eliminado permiso `tabs` invasivo).
+- **Extensión**: Fix de Main Thread Blocking y fuga de memoria en `content_script.js`.
+- **Extensión**: Mitigación de vulnerabilidad XSS en `popup.js`.
+- **Extensión**: Fix de crash por URLs Unicode en `service_worker.js`.
+- **Extensión**: Implementación de caché de sesión y notificaciones inteligentes.
+- **Deploy**: Estandarización de `Procfile`, `railway.json` (healthcheck) y `requirements.txt`.
+
+## v7.1 – Refactor a /v3/verify
+- Separación clara de motores (Structural, Rhetorical, Narrative, Absence).
+- Penalización contextual de uppercase.
+- Clasificación formal de dominio.
+- Clamp final de risk_index (0–1).
+
+## Próxima Etapa – v8.0 (Roadmap)
+- Integración OpenAI como motor complementario (Arquitectura Híbrida).
+- Implementación de Autenticación JWT (RS256) y JWKS.
+- Análisis semántico contextual opcional.
+- Modo transparente (desglose completo del score).

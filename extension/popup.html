@@ -16,22 +16,19 @@
     </header>
 
     <!-- ESTADO DE CARGA / SCAN -->
+    <!-- aria-hidden porque es una animación indeterminada, el estado se anuncia en el badge de abajo -->
     <div 
       class="scan-line" 
       id="scanLine" 
-      role="progressbar" 
-      aria-valuemin="0" 
-      aria-valuemax="100" 
-      aria-valuenow="0" 
-      aria-label="Escaneando contenido"
+      aria-hidden="true"
     ></div>
 
-    <!-- INDICADOR DE CACHÉ (nuevo) -->
+    <!-- INDICADOR DE CACHÉ -->
     <div id="cacheBadge" class="cache-badge hidden" role="status" aria-live="polite">
       <span aria-hidden="true">💾</span> Resultado en caché
     </div>
 
-    <!-- INDICADOR DE BACKGROUND (nuevo) -->
+    <!-- INDICADOR DE BACKGROUND -->
     <div id="backgroundBadge" class="background-badge hidden" role="status" aria-live="polite">
       <span class="spinner-small" aria-hidden="true"></span>
       Analizando en segundo plano...
@@ -45,7 +42,7 @@
       aria-live="assertive" 
       aria-atomic="true"
     >
-      Analizando...
+      Listo para analizar
     </div>
 
     <!-- SCORE -->
@@ -64,7 +61,7 @@
       <div id="summary" class="insight-box hidden" role="article"></div>
     </section>
 
-    <!-- ERROR PERSISTENTE (nuevo) -->
+    <!-- ERROR PERSISTENTE -->
     <div id="errorBox" class="error-box hidden" role="alert" aria-live="assertive">
       <span aria-hidden="true">⚠️</span>
       <span id="errorMessage"></span>
@@ -77,7 +74,7 @@
       class="pro-section locked" 
       aria-label="Funciones premium"
     >
-      <div id="proWarning" class="warning" role="alert">
+      <div id="proWarning" class="warning hidden" role="alert">
         <span aria-hidden="true">⚠️</span> Hay señales más profundas que no estás viendo
       </div>
       
@@ -101,10 +98,9 @@
         id="analyzeBtn" 
         aria-label="Iniciar nuevo análisis de la página"
       >
-        Re-analizar página
+        Analizar página
       </button>
       
-      <!-- NUEVO: Botón de limpiar caché (útil para debugging) -->
       <button 
         id="clearCacheBtn" 
         class="secondary-btn hidden" 
@@ -116,6 +112,6 @@
 
   </div>
   
-  <script src="popup.js"></script>
+  <script src="popup.js" defer></script>
 </body>
 </html>

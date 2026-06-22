@@ -1,6 +1,12 @@
-fastapi
-uvicorn[standard]
-slowapi
-pydantic
-sqlalchemy
-psycopg2-binary
+# Web Framework & Server
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+
+# Database
+SQLAlchemy==2.0.25
+psycopg2-binary==2.9.9
+
+# Utils
+pydantic==2.6.1
+slowapi==0.1.9
+python-dotenv==1.0.1

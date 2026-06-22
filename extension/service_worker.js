@@ -1,32 +1,33 @@
-// SignalCheck - Service Worker MV3 (CORREGIDO)
+// SignalCheck - Service Worker MV3 (CORREGIDO v2)
 
 console.log("🔥 SignalCheck: Service Worker Inicializado");
 
 // ------------------------------------------------------
 // CONFIGURACIÓN
 // ------------------------------------------------------
-const KEEP_ALIVE_INTERVAL = 4.9; // minutos (Chrome mata a los 5 min de inactividad)
+const MAINTENANCE_INTERVAL = 60; // minutos (para limpieza de caché)
 const ANALYSIS_CACHE_PREFIX = "analysis_";
 const CACHE_MAX_AGE = 24 * 60 * 60 * 1000; // 24 horas
+const API_URL = "https://gesignalcheck-production-8e78.up.railway.app/v3/verify";
 
 // ------------------------------------------------------
-// PERSISTENCIA: Mantener el worker vivo
+// PERSISTENCIA Y MANTENIMIENTO
 // ------------------------------------------------------
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === "keepAlive") {
-    console.log("💓 Keep-alive ping");
-    // No hacemos nada, solo el evento mantiene el worker activo
+  if (alarm.name === "maintenance") {
+    console.log("⏰ Ejecutando mantenimiento programado...");
+    cleanOldCache();
   }
 });
 
 // Crear alarma al instalar/activar
-function setupKeepAlive() {
-  chrome.alarms.get("keepAlive", (existing) => {
+function setupAlarms() {
+  chrome.alarms.get("maintenance", (existing) => {
     if (!existing) {
-      chrome.alarms.create("keepAlive", {
-        periodInMinutes: KEEP_ALIVE_INTERVAL
+      chrome.alarms.create("maintenance", {
+        periodInMinutes: MAINTENANCE_INTERVAL
       });
-      console.log("⏰ Alarma keep-alive creada");
+      console.log("⏰ Alarma de mantenimiento creada");
     }
   });
 }
@@ -36,10 +37,8 @@ function setupKeepAlive() {
 // ------------------------------------------------------
 chrome.runtime.onInstalled.addListener((details) => {
   console.log("✅ SignalCheck: Instalada/Actualizada", details.reason);
+  setupAlarms();
   
-  setupKeepAlive();
-  
-  // Limpiar caché vieja en actualizaciones
   if (details.reason === "update") {
     cleanOldCache();
   }
@@ -47,7 +46,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 chrome.runtime.onStartup.addListener(() => {
   console.log("🚀 SignalCheck: Navegador iniciado");
-  setupKeepAlive();
+  setupAlarms();
 });
 
 // ------------------------------------------------------
@@ -78,10 +77,15 @@ async function cleanOldCache() {
 }
 
 // ------------------------------------------------------
-// CACHE DE ANÁLISIS (para recuperar al reabrir popup)
+// CACHE DE ANÁLISIS
 // ------------------------------------------------------
+// FIX: Usar encodeURIComponent en lugar de btoa para evitar crashes con URLs Unicode
+function getUrlKey(url) {
+  return ANALYSIS_CACHE_PREFIX + encodeURIComponent(url);
+}
+
 async function saveAnalysisCache(url, data) {
-  const key = ANALYSIS_CACHE_PREFIX + btoa(url).replace(/[^a-zA-Z0-9]/g, "");
+  const key = getUrlKey(url);
   const payload = {
     ...data,
     timestamp: Date.now(),
@@ -97,7 +101,7 @@ async function saveAnalysisCache(url, data) {
 }
 
 async function getAnalysisCache(url) {
-  const key = ANALYSIS_CACHE_PREFIX + btoa(url).replace(/[^a-zA-Z0-9]/g, "");
+  const key = getUrlKey(url);
   
   try {
     const result = await chrome.storage.local.get(key);
@@ -119,30 +123,39 @@ async function getAnalysisCache(url) {
 }
 
 // ------------------------------------------------------
+// HELPERS DE API
+// ------------------------------------------------------
+async function buildHeaders() {
+  const headers = {
+    "Content-Type": "application/json",
+    "x-extension-id": chrome.runtime.id
+  };
+  try {
+    const stored = await chrome.storage.local.get("pro_token");
+    if (stored && stored.pro_token) {
+      headers["x-pro-token"] = stored.pro_token;
+    }
+  } catch (e) { /* sin token PRO */ }
+  return headers;
+}
+
+// ------------------------------------------------------
 // NOTIFICACIONES
 // ------------------------------------------------------
 function showNotification(title, message, level = "info") {
-  const icons = {
-    info: "icons/icon48.png",
-    warning: "icons/icon48.png",
-    error: "icons/icon48.png"
-  };
-  
   chrome.notifications.create({
     type: "basic",
-    iconUrl: icons[level] || icons.info,
+    iconUrl: "icons/icon48.png",
     title: title,
     message: message,
-    priority: level === "error" ? 2 : 1
+    priority: level === "warning" ? 2 : 1
   });
 }
 
 // ------------------------------------------------------
-// ANÁLISIS EN BACKGROUND (cuando el popup se cierra)
+// ANÁLISIS EN BACKGROUND
 // ------------------------------------------------------
 async function runBackgroundAnalysis(tabId, url, text, isEcommerce, title = "") {
-  const API_URL = "https://gesignalcheck-production-8e78.up.railway.app/v3/verify";
-  
   console.log("🔬 Análisis en background iniciado");
   
   try {
@@ -151,10 +164,7 @@ async function runBackgroundAnalysis(tabId, url, text, isEcommerce, title = "") 
     
     const res = await fetch(API_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-extension-id": chrome.runtime.id
-      },
+      headers: await buildHeaders(), // FIX: Ahora incluye el token PRO
       body: JSON.stringify({
         text: text,
         url: url,
@@ -171,23 +181,23 @@ async function runBackgroundAnalysis(tabId, url, text, isEcommerce, title = "") 
     }
     
     const data = await res.json();
-    
-    // Guardar en caché
     await saveAnalysisCache(url, data);
     
-    // Notificar al usuario si el análisis tardó mucho
-    showNotification(
-      "SignalCheck - Análisis completo",
-      `Nivel de riesgo: ${data.analysis?.level || "desconocido"}`,
-      data.analysis?.level === "alto" ? "warning" : "info"
-    );
+    // MEJORA: Solo notificar si el riesgo es Alto para no hacer spam
+    const level = data?.analysis?.level || "desconocido";
+    if (level === "alto" || level === "red") {
+      showNotification(
+        "⚠️ SignalCheck - Alerta de Riesgo",
+        `Se detectó un nivel de riesgo ALTO en una página.`,
+        "warning"
+      );
+    }
     
     console.log("✅ Análisis en background completado");
     return data;
     
   } catch (err) {
     console.error("❌ Error en background analysis:", err);
-    // Guardar error para que el popup lo sepa
     await saveAnalysisCache(url, {
       error: true,
       errorMessage: err.message,
@@ -198,42 +208,42 @@ async function runBackgroundAnalysis(tabId, url, text, isEcommerce, title = "") 
 }
 
 // ------------------------------------------------------
-// LISTENER DE MENSAJES (CORREGIDO Y EXPANDIDO)
+// LISTENER DE MENSAJES
 // ------------------------------------------------------
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   
-  // Test de vida (Ping)
+  // Test de vida (Ping) - Síncrono
   if (message.type === "ping") {
     sendResponse({ status: "alive", timestamp: Date.now() });
-    return true;
+    return false; // FIX: false para cerrar el puerto inmediatamente
   }
   
-  // Obtener caché de análisis para una URL
+  // Obtener caché de análisis - Asíncrono
   if (message.type === "GET_CACHED_ANALYSIS") {
     getAnalysisCache(message.url).then(cached => {
       sendResponse({ found: !!cached, data: cached });
     });
-    return true; // Async
+    return true; // Mantener abierto para async
   }
   
-  // Iniciar análisis en background (para cuando el popup se cierra)
+  // Iniciar análisis en background - Asíncrono
   if (message.type === "START_BACKGROUND_ANALYSIS") {
     const { tabId, url, text, is_ecommerce, title } = message;
     
     // Responder inmediatamente que se recibió
     sendResponse({ accepted: true, tabId });
     
-    // Ejecutar en background
+    // Ejecutar en background (no bloquea el sendResponse)
     runBackgroundAnalysis(tabId, url, text, is_ecommerce, title);
-    return true;
+    return false; // FIX: Ya respondimos arriba, así que false.
   }
   
-  // Limpiar caché manualmente
+  // Limpiar caché manualmente - Asíncrono
   if (message.type === "CLEAR_CACHE") {
     cleanOldCache().then(() => {
       sendResponse({ cleared: true });
     });
-    return true;
+    return true; // Mantener abierto para async
   }
 });
 
@@ -253,6 +263,6 @@ self.addEventListener("unhandledrejection", (event) => {
 // ------------------------------------------------------
 self.addEventListener("activate", (event) => {
   console.log("🚀 SignalCheck: Worker Activado");
-  setupKeepAlive();
+  setupAlarms();
   event.waitUntil(clients.claim());
 });

@@ -1,5 +1,5 @@
 // ======================================================
-// SIGNALCHECK CONTENT SCRIPT – CLEAN FIXED VERSION
+// SIGNALCHECK CONTENT SCRIPT – CLEAN FIXED VERSION (v2)
 // ======================================================
 
 // 🔒 Evitar doble inyección
@@ -7,6 +7,39 @@ if (!window.__SignalCheckInjected__) {
   window.__SignalCheckInjected__ = true;
 
   console.log("🚀 SIGNALCHECK CONTENT SCRIPT ACTIVO");
+
+  // ------------------------------------------------------
+  // CONSTANTES GLOBALES
+  // ------------------------------------------------------
+  const MAX_TEXT_LENGTH = 20000;
+  const MIN_BODY_LENGTH = 120;
+  
+  const NOISE_SELECTORS = [
+    "script", "style", "noscript", "svg", "iframe", "nav", "header", "footer", 
+    "aside", "form", "button", "[role='navigation']", "[role='banner']", 
+    "[role='complementary']", ".nav", ".menu", ".navbar", ".sidebar", ".footer", 
+    ".header", ".ads", ".advertisement", ".banner", ".popup", ".cookie-banner", 
+    ".breadcrumb", ".menu-lateral"
+  ].join(", ");
+
+  const CONTENT_SELECTORS = [
+    "p", "td", "th", "li", "h1", "h2", "h3", "h4", "h5", "h6", 
+    "blockquote", "article", "section", "dd", "dt", "span"
+  ].join(", ");
+
+  const ECOM_SELECTORS = [
+    'button[name="add-to-cart"]', ".add-to-cart", 'a[href*="checkout"]', ".cart-icon",
+    '[data-testid="checkout-button"]', 'a[href*="pay.hotmart.com"]', 'a[href*="pay.stripe.com"]',
+    'a[href*="paypal.com"]', ".price-tag", ".product-price", '[class*="price"]'
+  ];
+
+  const BUY_TEXTS = [
+    "comprar ahora", "añadir al carrito", "agregar al carrito", "inscribirme", 
+    "comprar", "buy now", "add to cart", "get instant access", "order now"
+  ];
+
+  const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+  const PRICE_REGEX = /\$\s?\d+[\d,.]*/;
 
   // ------------------------------------------------------
   // UTILIDAD: LIMPIAR TEXTO
@@ -21,107 +54,31 @@ if (!window.__SignalCheckInjected__) {
   }
 
   // ------------------------------------------------------
-  // SANITIZAR TEXTO
+  // SANITIZAR TEXTO (PII)
   // ------------------------------------------------------
   function sanitizeText(text) {
     if (!text) return "";
-
-    let clean = text.replace(
-      /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
-      "[EMAIL]"
-    );
-
-    return clean;
+    return text.replace(EMAIL_REGEX, "[EMAIL]");
   }
 
   // ------------------------------------------------------
-  // DETECTAR CONTENEDOR PRINCIPAL
-  // ------------------------------------------------------
-  function detectMainContainer() {
-    const selectors = [
-      "article",
-      "[role='main']",
-      "main",
-      ".content",
-      "#content",
-      ".post",
-      ".article",
-      "#app",
-      "#root",
-      "[data-testid='primaryColumn']"
-    ];
-
-    let bestElement = null;
-    let bestLength = 0;
-
-    for (const selector of selectors) {
-      const elements = document.querySelectorAll(selector);
-
-      for (const el of elements) {
-        const textLength = (el.innerText || "").length;
-
-        if (textLength > bestLength && textLength > 200) {
-          bestLength = textLength;
-          bestElement = el;
-        }
-      }
-    }
-
-    if (!bestElement) {
-      const largeDivs = document.querySelectorAll("div");
-
-      for (const div of largeDivs) {
-        const textLength = (div.innerText || "").length;
-
-        if (textLength > bestLength && textLength > 500) {
-          if (div !== document.body && div.children.length > 2) {
-            bestLength = textLength;
-            bestElement = div;
-          }
-        }
-      }
-    }
-
-    return bestElement || document.body;
-  }
-
-  // ------------------------------------------------------
-  // EXTRACCIÓN INTELIGENTE DEL BODY
-  // Estrategia: clonar el body, quitar ruido (nav/ads/scripts),
-  // y recolectar texto de bloques de contenido (incluye <p>, <td>,
-  // <li>, headings) — robusto para layouts viejos con tablas anidadas
-  // donde el texto está fragmentado en muchas celdas chicas.
+  // EXTRACCIÓN INTELIGENTE DEL BODY (SIN CLONAR DOM)
   // ------------------------------------------------------
   function extractSmartBodyText() {
-    const clone = document.body.cloneNode(true);
-
-    // Quitar ruido estructural antes de leer texto.
-    const noise = clone.querySelectorAll(
-      "script,style,noscript,svg,iframe,nav,header,footer,aside,form," +
-      "button,[role='navigation'],[role='banner'],[role='complementary']," +
-      ".nav,.menu,.navbar,.sidebar,.footer,.header,.ads,.advertisement," +
-      ".banner,.popup,.cookie-banner,.breadcrumb,.menu-lateral"
-    );
-    noise.forEach((el) => el.remove());
-
-    // Bloques de contenido textual. Se incluyen celdas de tabla (td/th)
-    // y items de lista, porque los sitios .asp viejos maquetan con tablas.
-    const blocks = clone.querySelectorAll(
-      "p,td,th,li,h1,h2,h3,h4,h5,h6,blockquote,article,section,dd,dt,span"
-    );
-
+    const blocks = document.querySelectorAll(CONTENT_SELECTORS);
     const seen = new Set();
     const parts = [];
 
     blocks.forEach((el) => {
-      // Saltar contenedores que envuelven a otros bloques (evita duplicar
-      // el mismo texto del padre y del hijo).
-      if (el.querySelector("p,td,th,li,h1,h2,h3,h4,h5,h6,blockquote,article,section")) {
-        return;
-      }
+      // 1. Saltar si está dentro de un contenedor de ruido (nav, ads, etc)
+      if (el.closest(NOISE_SELECTORS)) return;
+
+      // 2. Saltar contenedores que envuelven a otros bloques (evita duplicar texto)
+      if (el.querySelector(CONTENT_SELECTORS)) return;
+
       const txt = normalizeText(el.innerText || el.textContent || "");
-      // Umbral bajo (>20) para no perder celdas/títulos cortos legítimos,
-      // pero filtra ruido de 1-2 palabras (botones, etiquetas sueltas).
+      
+      // Umbral bajo (>20) para no perder celdas/títulos cortos legítimos
       if (txt.length > 20 && !seen.has(txt)) {
         seen.add(txt);
         parts.push(txt);
@@ -130,194 +87,106 @@ if (!window.__SignalCheckInjected__) {
 
     let combined = parts.join(" ");
 
-    // Red de seguridad: si aún quedó poco, usar el innerText completo del body.
+    // Red de seguridad: si aún quedó poco, usar el innerText completo del body
     if (combined.length < 200) {
-      combined = normalizeText(clone.innerText || document.body.innerText || "");
+      combined = normalizeText(document.body.innerText || "");
     }
 
     return combined;
   }
 
   // ------------------------------------------------------
-  // LIMPIAR ELEMENTOS IRRELEVANTES
-  // ------------------------------------------------------
-  function cleanDOM(container) {
-    if (container === document.body) {
-      return {
-        type: "smart_body",
-        text: extractSmartBodyText()
-      };
-    }
-
-    const cloned = container.cloneNode(true);
-
-    const selectorsToRemove = [
-      "script",
-      "style",
-      "noscript",
-      "svg",
-      "img",
-      "video",
-      "canvas",
-      "iframe",
-      "header",
-      "footer",
-      "nav",
-      "aside",
-      "form",
-      "button",
-      ".advertisement",
-      ".ads",
-      ".banner",
-      ".popup",
-      ".cookie-banner",
-      "[role='banner']",
-      "[role='complementary']",
-      "[role='navigation']"
-    ];
-
-    const elements = cloned.querySelectorAll(selectorsToRemove.join(","));
-    elements.forEach((el) => el.remove());
-
-    return cloned;
-  }
-
-  // ------------------------------------------------------
   // DETECTAR ECOMMERCE
   // ------------------------------------------------------
   function detectEcommerceContext() {
-    const ecomSelectors = [
-      'button[name="add-to-cart"]',
-      ".add-to-cart",
-      'a[href*="checkout"]',
-      ".cart-icon",
-      '[data-testid="checkout-button"]',
-      'a[href*="pay.hotmart.com"]',
-      'a[href*="pay.stripe.com"]',
-      'a[href*="paypal.com"]',
-      ".price-tag",
-      ".product-price",
-      '[class*="price"]'
-    ];
-
-    const hasCommerceElements = ecomSelectors.some(
+    const hasCommerceElements = ECOM_SELECTORS.some(
       (selector) => document.querySelector(selector) !== null
     );
 
-    const buttons = Array.from(
-      document.querySelectorAll('button, a, [role="button"]')
-    );
-
-    const hasBuyText = buttons.some((btn) => {
-      const text = (btn.textContent || "").toLowerCase();
-
-      return (
-        text.includes("comprar ahora") ||
-        text.includes("añadir al carrito") ||
-        text.includes("agregar al carrito") ||
-        text.includes("inscribirme") ||
-        text.includes("comprar") ||
-        text.includes("buy now") ||
-        text.includes("add to cart") ||
-        text.includes("get instant access") ||
-        text.includes("order now")
-      );
-    });
+    let hasBuyText = false;
+    if (!hasCommerceElements) {
+      const buttons = document.querySelectorAll('button, a, [role="button"]');
+      for (const btn of buttons) {
+        const text = (btn.textContent || "").toLowerCase();
+        if (BUY_TEXTS.some(t => text.includes(t))) {
+          hasBuyText = true;
+          break;
+        }
+      }
+    }
 
     const bodyText = document.body?.innerText || "";
-    const hasPricePattern = /\$\s?\d+[\d,.]*/.test(bodyText);
+    const hasPricePattern = PRICE_REGEX.test(bodyText);
 
     return hasCommerceElements || hasBuyText || hasPricePattern;
   }
 
   // ------------------------------------------------------
-  // EXTRAER TEXTO LIMPIO
+  // EXTRAER TEXTO LIMPIO (ORQUESTADOR)
   // ------------------------------------------------------
   function extractCleanText() {
     if (!document.body) return "";
 
     try {
-      const container = detectMainContainer();
-      const cleaned = cleanDOM(container);
+      let text = extractSmartBodyText();
 
-      let text = "";
-
-      if (cleaned) {
-        if (cleaned.type === "smart_body") {
-          text = normalizeText(cleaned.text || "");
-        } else {
-          text = normalizeText(cleaned.textContent || cleaned.innerText || "");
-        }
-      }
-
-      if (!text || text.length < 120) {
-        const smart = normalizeText(extractSmartBodyText());
-        if (smart.length > text.length) text = smart;
-      }
-      if (!text || text.length < 120) {
-        text = normalizeText(document.body.innerText || "");
+      // Doble verificación por si la extracción falla
+      if (!text || text.length < MIN_BODY_LENGTH) {
+        const fallback = normalizeText(document.body.innerText || "");
+        if (fallback.length > text.length) text = fallback;
       }
 
       text = sanitizeText(text);
-
-      return text.substring(0, 20000);
+      return text.substring(0, MAX_TEXT_LENGTH);
+      
     } catch (err) {
       console.warn("⚠ fallback extracción:", err);
-
       return sanitizeText(
         normalizeText(document.body.innerText || "")
-      ).substring(0, 20000);
+      ).substring(0, MAX_TEXT_LENGTH);
     }
   }
 
   // ------------------------------------------------------
-  // LISTENER EXTENSIÓN
+  // LISTENER EXTENSIÓN (ASÍNCRONO PARA NO BLOQUEAR UI)
   // ------------------------------------------------------
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (
-      !request ||
-      (
-        request.action !== "extractText" &&
-        request.type !== "GET_PAGE_CONTENT" &&
-        request.type !== "ping"
-      )
-    ) {
-      return;
+    if (!request || (request.action !== "extractText" && request.type !== "GET_PAGE_CONTENT" && request.type !== "ping")) {
+      return false; 
     }
 
     if (request.type === "ping") {
-      sendResponse({
-        ok: true,
-        injected: true
-      });
-
-      return false; // respuesta síncrona: cerrar el puerto evita "message port closed"
+      sendResponse({ ok: true, injected: true });
+      return false; 
     }
 
-    try {
-      const cleanText = extractCleanText();
-      const isEcommerce = detectEcommerceContext();
+    // Usamos setTimeout(0) para ceder el hilo al navegador antes de procesar el DOM pesado.
+    // Esto previene el "congelamiento" de la pestaña del usuario.
+    setTimeout(() => {
+      try {
+        const cleanText = extractCleanText();
+        const isEcommerce = detectEcommerceContext();
 
-      sendResponse({
-        ok: true,
-        text: cleanText,
-        url: window.location.href,
-        title: document.title || "",
-        is_ecommerce: isEcommerce
-      });
-    } catch (error) {
-      console.error("❌ Error extrayendo texto:", error);
+        sendResponse({
+          ok: true,
+          text: cleanText,
+          url: window.location.href,
+          title: document.title || "",
+          is_ecommerce: isEcommerce
+        });
+      } catch (error) {
+        console.error("❌ Error extrayendo texto:", error);
+        sendResponse({
+          ok: false,
+          text: "",
+          url: window.location.href,
+          title: document.title || "",
+          error: true,
+          is_ecommerce: false
+        });
+      }
+    }, 0);
 
-      sendResponse({
-        ok: false,
-        text: "",
-        url: window.location.href,
-        title: document.title || "",
-        error: true,
-        is_ecommerce: false
-      });
-    }
-
-    return false; // respuesta síncrona: cerrar el puerto evita "message port closed"
+    return true; // Indica a Chrome que sendResponse se llamará de forma asíncrona
   });
 }
