@@ -54,7 +54,7 @@ body {
 
 .subtitle {
   font-size: 11px;
-  color: #94a3b8; /* Mejorado contraste */
+  color: #64748b;
   margin-top: 3px;
   line-height: 1.4;
 }
@@ -70,6 +70,11 @@ body {
   border-radius: 3px;
   overflow: hidden;
   position: relative;
+  transition: background 0.3s ease;
+}
+
+.scan-line.active {
+  background: #1e293b;
 }
 
 .scan-line.active::after {
@@ -151,7 +156,7 @@ body {
   text-align: center;
   background: #1e293b;
   color: #94a3b8;
-  transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   border: 1px solid transparent;
   letter-spacing: 0.02em;
 }
@@ -196,14 +201,14 @@ body {
 
 .score-label {
   font-size: 14px;
-  color: #64748b; /* Mejorado contraste */
+  color: #475569;
   font-weight: 400;
-  opacity: 0.9;
+  opacity: 0.8;
 }
 
 .confidence {
   font-size: 12px;
-  color: #94a3b8; /* Mejorado contraste */
+  color: #64748b;
   margin-top: 6px;
   font-weight: 500;
 }
@@ -228,7 +233,7 @@ body {
   background: linear-gradient(145deg, #161b27, #1a1f2e);
   border-radius: 8px;
   border: 1px solid #252b3b;
-  transition: border-color 0.3s ease;
+  transition: all 0.3s ease;
 }
 
 .insight-box:hover {
@@ -269,7 +274,7 @@ body {
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s, transform 0.2s;
+  transition: all 0.2s ease;
   align-self: flex-end;
 }
 
@@ -293,7 +298,7 @@ body {
   background: linear-gradient(145deg, #161a22, #1d222c);
   border: 1px solid #2a2f3a;
   text-align: center;
-  transition: border-color 0.3s ease;
+  transition: all 0.3s ease;
 }
 
 .pro-section.locked {
@@ -316,7 +321,7 @@ body {
   list-style: none;
   padding: 0;
   font-size: 12px;
-  color: #64748b; /* Mejorado contraste */
+  color: #475569;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -326,7 +331,7 @@ body {
   padding: 6px 8px;
   background: rgba(30, 41, 59, 0.5);
   border-radius: 6px;
-  transition: background-color 0.2s ease;
+  transition: background 0.2s ease;
 }
 
 .pro-list li:hover {
@@ -358,7 +363,7 @@ body {
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  transition: opacity 0.2s, transform 0.2s, box-shadow 0.2s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
 }
@@ -407,7 +412,7 @@ button#analyzeBtn {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s, color 0.2s, transform 0.2s;
+  transition: all 0.2s ease;
   letter-spacing: 0.02em;
 }
 
@@ -433,11 +438,11 @@ button#analyzeBtn:focus-visible {
   border: 1px solid #334155;
   border-radius: 8px;
   background: transparent;
-  color: #94a3b8; /* Mejorado contraste */
+  color: #64748b;
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+  transition: all 0.2s ease;
   margin-top: 6px;
   display: flex;
   align-items: center;
@@ -447,7 +452,7 @@ button#analyzeBtn:focus-visible {
 
 .secondary-btn:hover {
   background: rgba(51, 65, 85, 0.3);
-  color: #cbd5e1;
+  color: #94a3b8;
   border-color: #475569;
 }
 
@@ -465,4 +470,62 @@ button#analyzeBtn:focus-visible {
   flex-direction: column;
   gap: 6px;
   padding-top: 4px;
-  border-top: 1px solid #
+  border-top: 1px solid #1e293b;
+}
+
+/* =========================
+   UTILIDADES
+========================= */
+
+.hidden { 
+  display: none !important; 
+}
+
+/* Focus visible global para accesibilidad */
+*:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
+/* Transición suave para todos los elementos interactivos */
+button, .signal-label, .insight-box, .pro-section {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Responsive: si el popup se abre en ventana más grande */
+@media (min-width: 400px) {
+  body {
+    width: 360px;
+  }
+  
+  .container {
+    padding: 20px;
+  }
+  
+  .score-main {
+    font-size: 44px;
+  }
+}
+
+/* Reducir motion para usuarios que lo prefieren */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* =========================
+   UTILIDAD OCULTAR
+========================= */
+
+.hidden {
+  display: none !important;
+}
+
+/* Re-analizar (alias de analyzeBtn en modo resultado) */
+button#analyzeBtn.reanalyze {
+  color: #64748b;
+  font-size: 11px;
+}
