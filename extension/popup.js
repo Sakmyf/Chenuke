@@ -456,7 +456,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (upgradeBtn) {
     upgradeBtn.addEventListener("click", () => {
-      chrome.tabs.create({ url: PRO_URL });
+      const analysis = lastResult?.analysis || lastResult || {};
+      const score = analysis.score ?? "";
+      const level = analysis.level ?? "";
+      const conf  = analysis.confidence != null
+        ? Math.round(analysis.confidence <= 1 ? analysis.confidence * 100 : analysis.confidence)
+        : "";
+      const params = new URLSearchParams({ score, level, conf }).toString();
+      chrome.tabs.create({ url: `${PRO_URL}?${params}` });
     });
   }
 
