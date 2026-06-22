@@ -456,14 +456,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (upgradeBtn) {
     upgradeBtn.addEventListener("click", () => {
-      const analysis = lastResult?.analysis || lastResult || {};
-      const score = analysis.score ?? "";
-      const level = analysis.level ?? "";
-      const conf  = analysis.confidence != null
-        ? Math.round(analysis.confidence <= 1 ? analysis.confidence * 100 : analysis.confidence)
+      const raw = lastResult?.analysis || lastResult || {};
+      const score = raw.score ?? "";
+      const level = (raw.level ?? "").toLowerCase();
+      const conf  = raw.confidence != null
+        ? Math.round(raw.confidence <= 1 ? raw.confidence * 100 : raw.confidence)
         : "";
-      const params = new URLSearchParams({ score, level, conf }).toString();
-      chrome.tabs.create({ url: `${PRO_URL}?${params}` });
+      const url = score
+        ? `${PRO_URL}?score=${score}&level=${level}&conf=${conf}`
+        : PRO_URL;
+      chrome.tabs.create({ url });
     });
   }
 
