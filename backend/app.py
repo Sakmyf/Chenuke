@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 
-ENGINE_VERSION = "15.20-dev-safe"
+ENGINE_VERSION = "15.22-commercial-risk"
 
 ALLOWED_ORIGINS = [
     o.strip()
