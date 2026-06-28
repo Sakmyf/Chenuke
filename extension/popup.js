@@ -5,22 +5,87 @@
 const API_URL = "https://chenuke-production-8e78.up.railway.app/v3/verify";
 const PRO_URL = "https://chenuke.com/analysis";
 
-const API_TIMEOUT = 30000; // 30 segundos
+const API_TIMEOUT = 30000;
 const MAX_RETRIES = 2;
+const CACHE_TTL = 30000;
+const RETRY_HTTP_STATUS = [502, 503, 504];
 
-// Headers comunes: incluye x-pro-token si el usuario activó PRO
+let lastResult = null;
+
 async function buildHeaders() {
   const headers = {
     "Content-Type": "application/json",
     "x-extension-id": chrome.runtime.id
   };
+
   try {
     const stored = await chrome.storage.local.get("pro_token");
     if (stored && stored.pro_token) {
       headers["x-pro-token"] = stored.pro_token;
     }
-  } catch (e) { /* sin token PRO */ }
+  } catch (e) {}
+
   return headers;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getHttpErrorMessage(status, rawText = "") {
+  const cleanText = String(rawText || "").slice(0, 180);
+
+  if (status === 429) return "Límite temporal alcanzado. Esperá unos segundos y reintentá.";
+  if (status === 400) return "Solicitud inválida. La página envió contenido que la API no pudo procesar.";
+  if (status === 401 || status === 403) return "Acceso no autorizado. Revisá el token PRO o permisos de la extensión.";
+  if (status === 404) return "Endpoint no encontrado. Revisá la URL de la API en popup.js.";
+  if (status === 502 || status === 503 || status === 504) return "API temporalmente no disponible. Esperá unos segundos y reintentá.";
+  if (status >= 500) return "Error interno de la API. Revisá los deploy logs de Railway.";
+
+  return cleanText ? `Error HTTP ${status}: ${cleanText}` : `Error HTTP ${status}`;
+}
+
+function getUserErrorMessage(err) {
+  const msg = String(err?.message || "");
+
+  if (err?.name === "AbortError") return "Tiempo de espera agotado";
+  if (msg.includes("Failed to fetch")) return "No se pudo conectar con la API";
+  if (msg.includes("Límite temporal")) return msg;
+  if (msg.includes("Endpoint no encontrado")) return msg;
+  if (msg.includes("API temporalmente")) return msg;
+  if (msg.includes("Error interno")) return msg;
+  if (msg.includes("Acceso no autorizado")) return msg;
+  if (msg.includes("Solicitud inválida")) return msg;
+
+  return msg || "Error de conexión";
+}
+
+async function getCachedResult(url) {
+  try {
+    const stored = await chrome.storage.local.get("chenuke_last_result");
+    const cached = stored?.chenuke_last_result;
+
+    if (!cached || cached.url !== url) return null;
+
+    const age = Date.now() - (cached.timestamp || 0);
+    if (age > CACHE_TTL) return null;
+
+    return cached.data || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function setCachedResult(url, data) {
+  try {
+    await chrome.storage.local.set({
+      chenuke_last_result: {
+        url,
+        data,
+        timestamp: Date.now()
+      }
+    });
+  } catch (e) {}
 }
 
 function obtenerColorPorcentaje(valor, metrica) {
@@ -32,11 +97,7 @@ function obtenerColorPorcentaje(valor, metrica) {
     return "#4ade80";
   }
 
-  if (
-    m === "manipulación" ||
-    m === "manipulacion" ||
-    m === "manipulation"
-  ) {
+  if (m === "manipulación" || m === "manipulacion" || m === "manipulation") {
     if (valor > 70) return "#ef4444";
     if (valor > 40) return "#facc15";
     return "#4ade80";
@@ -75,12 +136,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const errorMessage = document.getElementById("errorMessage");
   const retryErrorBtn = document.getElementById("retryErrorBtn");
 
-  let lastResult = null;
-
   function showError(message) {
-    labelBadge.textContent = message;
-    labelBadge.style.background = "rgba(239,68,68,0.2)";
-    labelBadge.style.color = "#f87171";
+    if (labelBadge) {
+      labelBadge.textContent = message;
+      labelBadge.style.background = "rgba(239,68,68,0.2)";
+      labelBadge.style.color = "#f87171";
+    }
+
+    if (scoreEl) scoreEl.textContent = "--";
+    if (confEl) confEl.textContent = "--";
 
     if (errorBox && errorMessage) {
       errorMessage.textContent = message;
@@ -98,9 +162,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (scanLine) scanLine.classList.add("active");
 
-    labelBadge.textContent = "Analizando contenido...";
-    labelBadge.style.background = "#333";
-    labelBadge.style.color = "#aaa";
+    if (labelBadge) {
+      labelBadge.textContent = "Analizando contenido...";
+      labelBadge.style.background = "#333";
+      labelBadge.style.color = "#aaa";
+    }
 
     if (summaryBox) summaryBox.classList.add("hidden");
     if (scoreEl) scoreEl.textContent = "--";
@@ -142,13 +208,13 @@ document.addEventListener("DOMContentLoaded", () => {
         files: ["content_script.js"]
       });
 
-      await new Promise((r) => setTimeout(r, 400));
+      await sleep(400);
     } catch (e) {
       console.warn("⚠️ No se pudo inyectar content script:", e);
     }
   }
 
-  async function fetchWithRetry(url, options, retries = 0) {
+  async function fetchWithTimeout(url, options) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
 
@@ -162,21 +228,58 @@ document.addEventListener("DOMContentLoaded", () => {
       return res;
     } catch (err) {
       clearTimeout(timeoutId);
-
-      if (retries < MAX_RETRIES && err.name !== "AbortError") {
-        const delay = Math.pow(2, retries) * 1000;
-        console.log(`🔄 Reintento ${retries + 1} en ${delay}ms...`);
-
-        await new Promise((r) => setTimeout(r, delay));
-
-        return fetchWithRetry(url, options, retries + 1);
-      }
-
       throw err;
     }
   }
 
-  async function runAnalysis() {
+  async function fetchAnalysis(payload, attempt = 0) {
+    const res = await fetchWithTimeout(API_URL, {
+      method: "POST",
+      headers: await buildHeaders(),
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => "");
+
+      if (RETRY_HTTP_STATUS.includes(res.status) && attempt < MAX_RETRIES) {
+        const delay = Math.pow(2, attempt) * 1000;
+        console.log(`🔄 HTTP ${res.status}. Reintento ${attempt + 1} en ${delay}ms...`);
+        await sleep(delay);
+        return fetchAnalysis(payload, attempt + 1);
+      }
+
+      const error = new Error(getHttpErrorMessage(res.status, errorText));
+      error.status = res.status;
+      error.raw = errorText;
+      throw error;
+    }
+
+    return res.json();
+  }
+
+  async function extractPageContent(tab) {
+    await ensureContentScript(tab.id);
+    await sleep(150);
+
+    return new Promise((resolve, reject) => {
+      chrome.tabs.sendMessage(
+        tab.id,
+        { action: "extractText" },
+        (extracted) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error("Error de comunicación con la página"));
+            return;
+          }
+
+          resolve(extracted);
+        }
+      );
+    });
+  }
+
+  async function runAnalysis(options = {}) {
+    const force = options.force === true;
     const MIN_TIME = 1200;
     const startTime = Date.now();
 
@@ -200,85 +303,53 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      await ensureContentScript(tab.id);
-      await new Promise((r) => setTimeout(r, 150));
+      if (!force) {
+        const cached = await getCachedResult(tab.url);
 
-      chrome.tabs.sendMessage(
-        tab.id,
-        { action: "extractText" },
-        async (extracted) => {
-          if (chrome.runtime.lastError) {
-            console.error("❌ Error de comunicación:", chrome.runtime.lastError);
-            showError("Error de comunicación con la página");
-            stopScanUI();
-            return;
-          }
-
-          if (
-            !extracted ||
-            !extracted.ok ||
-            !extracted.text ||
-            extracted.text.length < 30
-          ) {
-            showError("Texto insuficiente o error de extracción");
-            stopScanUI();
-            return;
-          }
-
-          try {
-            const res = await fetchWithRetry(API_URL, {
-              method: "POST",
-              headers: await buildHeaders(),
-              body: JSON.stringify({
-                text: extracted.text,
-                url: extracted.url || tab.url,
-                title: extracted.title || tab.title || "",
-                is_ecommerce: extracted.is_ecommerce || false
-              })
-            });
-
-            if (!res.ok) {
-              const errorText = await res.text().catch(() => "Error desconocido");
-              throw new Error(`HTTP ${res.status}: ${errorText}`);
-            }
-
-            const data = await res.json();
-
-            lastResult = {
-              ...data,
-              _timestamp: Date.now()
-            };
-
-            const elapsed = Date.now() - startTime;
-            const delay = Math.max(0, MIN_TIME - elapsed);
-
-            setTimeout(() => {
-              renderResult(data);
-              stopScanUI();
-            }, delay);
-          } catch (err) {
-            console.error("❌ Error API:", err?.name, err?.message, err);
-
-            let errorMsg = "Error de conexión";
-
-            if (err.name === "AbortError") {
-              errorMsg = "Tiempo de espera agotado";
-            } else if ((err.message || "").includes("HTTP")) {
-              errorMsg = "Error del servidor";
-            } else if ((err.message || "").includes("Failed to fetch")) {
-              errorMsg = "No se pudo conectar con la API";
-            } else if (err instanceof DOMException) {
-              errorMsg = "Error de conexión con la API";
-            }
-
-            showError(errorMsg);
-            stopScanUI();
-          }
+        if (cached) {
+          renderResult(cached);
+          stopScanUI();
+          return;
         }
-      );
+      }
+
+      const extracted = await extractPageContent(tab);
+
+      if (
+        !extracted ||
+        !extracted.ok ||
+        !extracted.text ||
+        extracted.text.length < 30
+      ) {
+        showError("Texto insuficiente o error de extracción");
+        stopScanUI();
+        return;
+      }
+
+      const data = await fetchAnalysis({
+        text: extracted.text,
+        url: extracted.url || tab.url,
+        title: extracted.title || tab.title || "",
+        is_ecommerce: extracted.is_ecommerce || false
+      });
+
+      lastResult = {
+        ...data,
+        _timestamp: Date.now()
+      };
+
+      await setCachedResult(tab.url, lastResult);
+
+      const elapsed = Date.now() - startTime;
+      const delay = Math.max(0, MIN_TIME - elapsed);
+
+      setTimeout(() => {
+        renderResult(data);
+        stopScanUI();
+      }, delay);
     } catch (err) {
-      console.error("❌ Error inesperado:", err);
-      showError("Error inesperado");
+      console.error("❌ Error Chenuke:", err?.name, err?.message, err);
+      showError(getUserErrorMessage(err));
       stopScanUI();
     }
   }
@@ -295,18 +366,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const level = String(analysis.level || "medio").toLowerCase();
 
-    // Contenido omitido por privacidad: estado neutral, sin score ni semáforo de riesgo.
     if (data?.status === "skipped" || level === "none") {
-      labelBadge.textContent = "⚪ No analizado";
-      labelBadge.style.background = "rgba(148,163,184,0.18)";
-      labelBadge.style.color = "#cbd5e1";
+      if (labelBadge) {
+        labelBadge.textContent = "⚪ No analizado";
+        labelBadge.style.background = "rgba(148,163,184,0.18)";
+        labelBadge.style.color = "#cbd5e1";
+      }
+
       if (scoreEl) scoreEl.textContent = "—";
       if (confEl) confEl.textContent = "—";
+
       if (summaryBox) {
-        summaryBox.textContent = analysis.insight || analysis.message ||
+        summaryBox.textContent =
+          analysis.insight ||
+          analysis.message ||
           "Chenuke no analiza ni registra páginas de contenido privado.";
+
         summaryBox.classList.remove("hidden");
       }
+
       if (proSection) proSection.classList.add("locked");
       if (proWarning) proWarning.style.display = "none";
       if (upgradeBtn) upgradeBtn.style.display = "none";
@@ -314,18 +392,25 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // Texto insuficiente para análisis estructural: abstención honesta, sin score.
     if (level === "insuficiente") {
-      labelBadge.textContent = "⚪ Texto insuficiente";
-      labelBadge.style.background = "rgba(148,163,184,0.18)";
-      labelBadge.style.color = "#cbd5e1";
+      if (labelBadge) {
+        labelBadge.textContent = "⚪ Texto insuficiente";
+        labelBadge.style.background = "rgba(148,163,184,0.18)";
+        labelBadge.style.color = "#cbd5e1";
+      }
+
       if (scoreEl) scoreEl.textContent = "—";
       if (confEl) confEl.textContent = "—";
+
       if (summaryBox) {
-        summaryBox.textContent = analysis.insight || analysis.message ||
+        summaryBox.textContent =
+          analysis.insight ||
+          analysis.message ||
           "El contenido es demasiado corto para un análisis estructural confiable.";
+
         summaryBox.classList.remove("hidden");
       }
+
       if (proSection) proSection.classList.add("locked");
       if (proWarning) proWarning.style.display = "none";
       if (upgradeBtn) upgradeBtn.style.display = "none";
@@ -333,18 +418,25 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // Texto breve PERO con señales de presión: alerta cualitativa, sin score numérico.
     if (level === "alerta_breve") {
-      labelBadge.textContent = "⚠️ Texto breve — precaución";
-      labelBadge.style.background = "rgba(250,204,21,0.18)";
-      labelBadge.style.color = "#facc15";
+      if (labelBadge) {
+        labelBadge.textContent = "⚠️ Texto breve — precaución";
+        labelBadge.style.background = "rgba(250,204,21,0.18)";
+        labelBadge.style.color = "#facc15";
+      }
+
       if (scoreEl) scoreEl.textContent = "!";
       if (confEl) confEl.textContent = "—";
+
       if (summaryBox) {
-        summaryBox.textContent = analysis.insight || analysis.message ||
+        summaryBox.textContent =
+          analysis.insight ||
+          analysis.message ||
           "Texto corto con señales de presión. Leé con cautela.";
+
         summaryBox.classList.remove("hidden");
       }
+
       if (proSection) proSection.classList.add("locked");
       if (proWarning) proWarning.style.display = "none";
       if (upgradeBtn) upgradeBtn.style.display = "none";
@@ -353,17 +445,23 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (level === "bajo" || level === "green") {
-      labelBadge.textContent = "🟢 Bajo riesgo";
-      labelBadge.style.background = "rgba(34,197,94,0.2)";
-      labelBadge.style.color = "#4ade80";
+      if (labelBadge) {
+        labelBadge.textContent = "🟢 Bajo riesgo";
+        labelBadge.style.background = "rgba(34,197,94,0.2)";
+        labelBadge.style.color = "#4ade80";
+      }
     } else if (level === "medio" || level === "yellow") {
-      labelBadge.textContent = "🟡 Riesgo moderado";
-      labelBadge.style.background = "rgba(250,204,21,0.2)";
-      labelBadge.style.color = "#facc15";
+      if (labelBadge) {
+        labelBadge.textContent = "🟡 Riesgo moderado";
+        labelBadge.style.background = "rgba(250,204,21,0.2)";
+        labelBadge.style.color = "#facc15";
+      }
     } else {
-      labelBadge.textContent = "🔴 Alto riesgo";
-      labelBadge.style.background = "rgba(239,68,68,0.2)";
-      labelBadge.style.color = "#f87171";
+      if (labelBadge) {
+        labelBadge.textContent = "🔴 Alto riesgo";
+        labelBadge.style.background = "rgba(239,68,68,0.2)";
+        labelBadge.style.color = "#f87171";
+      }
     }
 
     let score = analysis.structural_index ?? analysis.score ?? 0;
@@ -459,29 +557,26 @@ document.addEventListener("DOMContentLoaded", () => {
       const raw = lastResult?.analysis || lastResult || {};
       const score = raw.score ?? "";
       const level = (raw.level ?? "").toLowerCase();
-      const conf  = raw.confidence != null
+
+      const conf = raw.confidence != null
         ? Math.round(raw.confidence <= 1 ? raw.confidence * 100 : raw.confidence)
         : "";
+
       const url = score
         ? `${PRO_URL}?score=${score}&level=${level}&conf=${conf}`
         : PRO_URL;
+
       chrome.tabs.create({ url });
     });
   }
 
   if (analyzeBtn) {
-    analyzeBtn.addEventListener("click", runAnalysis);
+    analyzeBtn.addEventListener("click", () => runAnalysis({ force: true }));
   }
 
   if (retryErrorBtn) {
-    retryErrorBtn.addEventListener("click", runAnalysis);
+    retryErrorBtn.addEventListener("click", () => runAnalysis({ force: true }));
   }
 
-  const now = Date.now();
-
-  if (lastResult && now - (lastResult._timestamp || 0) < 30000) {
-    renderResult(lastResult);
-  } else {
-    runAnalysis();
-  }
+  runAnalysis({ force: false });
 });
