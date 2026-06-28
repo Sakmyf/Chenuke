@@ -1,9 +1,9 @@
 // ======================================================
-// SIGNALCHECK POPUP.JS – CLEAN FIXED VERSION
+// CHENUKE POPUP.JS – CLEAN FIXED VERSION
 // ======================================================
 
-const API_URL = "https://gesignalcheck-production-8e78.up.railway.app/v3/verify";
-const PRO_URL = "https://gesignalcheck.com/analysis";
+const API_URL = "https://chenuke-production-8e78.up.railway.app/v3/verify";
+const PRO_URL = "https://chenuke.com/analysis";
 
 const API_TIMEOUT = 30000; // 30 segundos
 const MAX_RETRIES = 2;
@@ -304,7 +304,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (confEl) confEl.textContent = "—";
       if (summaryBox) {
         summaryBox.textContent = analysis.insight || analysis.message ||
-          "SignalCheck no analiza ni registra páginas de contenido privado.";
+          "Chenuke no analiza ni registra páginas de contenido privado.";
         summaryBox.classList.remove("hidden");
       }
       if (proSection) proSection.classList.add("locked");

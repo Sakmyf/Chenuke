@@ -1,9 +1,9 @@
-GE SIGNALCHECK – MARKETING & POSITIONING
+CHENUKE – MARKETING & POSITIONING
 Identidad del proyecto
-GE SignalCheck es una herramienta institucional orientada a promover una lectura crítica del contenido digital.No es un verificador de hechos. No es una herramienta partidaria. No es un sistema de censura.Es un analizador de señales estructurales del discurso digital.
+Chenuke es una herramienta institucional orientada a promover una lectura crítica del contenido digital.No es un verificador de hechos. No es una herramienta partidaria. No es un sistema de censura.Es un analizador de señales estructurales del discurso digital.
 
 Propuesta central
-SignalCheck ayuda a identificar posibles señales de:
+Chenuke ayuda a identificar posibles señales de:
 
 Persuasión intensa
 Ausencia de respaldo verificable
@@ -11,7 +11,7 @@ Narrativa unilateral
 Uso de urgencia artificial
 Intención comercial implícitaEl objetivo es apoyar el criterio personal del usuario.
 Posicionamiento estratégico
-SignalCheck se posiciona como:
+Chenuke se posiciona como:
 
 Un escudo ciudadano digital.
 Herramienta accesible, clara y neutral.
@@ -41,10 +41,10 @@ Tono comunicacional
 Neutral LATAM, claro y accesible.
 Sin tecnicismos innecesarios, ni promesas exageradas, ni alarmismo.
 Diferenciación
-SignalCheck no declara: “Es falso”, “Es estafa”, “Es verdadero”.Declara: “Se detectan señales estructurales asociadas a…”Esto reduce conflicto político y legal. Mantiene credibilidad institucional.
+Chenuke no declara: “Es falso”, “Es estafa”, “Es verdadero”.Declara: “Se detectan señales estructurales asociadas a…”Esto reduce conflicto político y legal. Mantiene credibilidad institucional.
 
 Marco científico
-SignalCheck no determina la verdad científica de una afirmación.Identifica señales estructurales de: evidencia incompleta, ausencia de fuentes visibles, promesas extraordinarias sin respaldo claro.En temas científicos en evolución, prioriza la clasificación “en debate” antes que dictámenes categóricos.
+Chenuke no determina la verdad científica de una afirmación.Identifica señales estructurales de: evidencia incompleta, ausencia de fuentes visibles, promesas extraordinarias sin respaldo claro.En temas científicos en evolución, prioriza la clasificación “en debate” antes que dictámenes categóricos.
 
 Declaración clave
-Ningún sistema automatizado reemplaza el criterio personal. SignalCheck es una herramienta de apoyo.
+Ningún sistema automatizado reemplaza el criterio personal. Chenuke es una herramienta de apoyo.

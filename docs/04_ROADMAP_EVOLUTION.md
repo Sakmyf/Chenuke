@@ -1,4 +1,4 @@
-GE SIGNALCHECK – ROADMAP & EVOLUTION
+CHENUKE – ROADMAP & EVOLUTION
 Estado actual (v15.x)
 Motor heurístico estructural estable y optimizado.Arquitectura:
 
@@ -22,7 +22,7 @@ Evolución del producto
 Etapa 1: Extensión gratuita + análisis ampliado pago puntual. (Actual)Etapa 2: Cuenta simple de usuario. Historial de análisis. Descarga de reportes.Etapa 3: Sección educativa institucional. Guías de lectura crítica.Etapa 4: Comité o consejo de revisión técnica. Formalización institucional ampliada.
 
 Límites estratégicos
-SignalCheck NO evolucionará hacia:
+Chenuke NO evolucionará hacia:
 
 Plataforma de censura
 Fact-checking político partidario

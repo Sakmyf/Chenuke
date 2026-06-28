@@ -1,4 +1,4 @@
-SignalCheck Engine v15.1
+Chenuke Engine v15.1
 Versión limpia y optimizada del MVP. Motor de análisis estructural heurístico (no fact-checker).
 
 Decisiones aplicadas

@@ -3,7 +3,7 @@
 
 ### 3. `02_VERSION_LOG.md.md`
 ```markdown
-# GE SIGNALCHECK – VERSION LOG
+# CHENUKE – VERSION LOG
 
 ## v15.1 – Hardening & Optimización (Sesión 2)
 - **Backend**: Fix de 12 bugs críticos (Event loop bloqueado, timing attacks, pesos no renormalizados, conexiones zombie DB).

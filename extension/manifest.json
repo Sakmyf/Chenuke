@@ -1,16 +1,16 @@
 {
   "manifest_version": 3,
-  "name": "SignalCheck",
+  "name": "Chenuke",
   "version": "0.4.0",
-  "description": "Análisis estructural del contenido — SignalCheck Engine",
-  "author": "SignalCheck Team",
-  "homepage_url": "https://gesignalcheck.com",
+  "description": "Análisis estructural del contenido — Chenuke Engine",
+  "author": "Chenuke Team",
+  "homepage_url": "https://chenuke.com",
 
   "minimum_chrome_version": "102",
 
   "action": {
     "default_popup": "popup.html",
-    "default_title": "SignalCheck",
+    "default_title": "Chenuke",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
@@ -32,8 +32,8 @@
   ],
 
   "host_permissions": [
-    "https://gesignalcheck-production-8e78.up.railway.app/*",
-    "https://gesignalcheck.com/*"
+    "https://chenuke-production-8e78.up.railway.app/*",
+    "https://chenuke.com/*"
   ],
 
   "web_accessible_resources": [
@@ -54,6 +54,6 @@
   },
 
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://gesignalcheck-production-8e78.up.railway.app https://gesignalcheck.com"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://chenuke-production-8e78.up.railway.app https://chenuke.com"
   }
 }

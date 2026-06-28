@@ -1,4 +1,4 @@
-GE SIGNALCHECK – ESTADO TÉCNICO ACTUAL (v15.1)
+CHENUKE – ESTADO TÉCNICO ACTUAL (v15.1)
 1. Arquitectura General
 Frontend (Extensión Chrome MV3)
 manifest.json (Inyección dinámica, permisos activeTab y scripting)

@@ -1,6 +1,6 @@
-// SignalCheck - Service Worker MV3 (CORREGIDO v2)
+// Chenuke - Service Worker MV3 (CORREGIDO v2)
 
-console.log("🔥 SignalCheck: Service Worker Inicializado");
+console.log("🔥 Chenuke: Service Worker Inicializado");
 
 // ------------------------------------------------------
 // CONFIGURACIÓN
@@ -8,7 +8,7 @@ console.log("🔥 SignalCheck: Service Worker Inicializado");
 const MAINTENANCE_INTERVAL = 60; // minutos (para limpieza de caché)
 const ANALYSIS_CACHE_PREFIX = "analysis_";
 const CACHE_MAX_AGE = 24 * 60 * 60 * 1000; // 24 horas
-const API_URL = "https://gesignalcheck-production-8e78.up.railway.app/v3/verify";
+const API_URL = "https://chenuke-production-8e78.up.railway.app/v3/verify";
 
 // ------------------------------------------------------
 // PERSISTENCIA Y MANTENIMIENTO
@@ -36,7 +36,7 @@ function setupAlarms() {
 // INSTALACIÓN / ACTUALIZACIÓN
 // ------------------------------------------------------
 chrome.runtime.onInstalled.addListener((details) => {
-  console.log("✅ SignalCheck: Instalada/Actualizada", details.reason);
+  console.log("✅ Chenuke: Instalada/Actualizada", details.reason);
   setupAlarms();
   
   if (details.reason === "update") {
@@ -45,7 +45,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  console.log("🚀 SignalCheck: Navegador iniciado");
+  console.log("🚀 Chenuke: Navegador iniciado");
   setupAlarms();
 });
 
@@ -187,7 +187,7 @@ async function runBackgroundAnalysis(tabId, url, text, isEcommerce, title = "") 
     const level = data?.analysis?.level || "desconocido";
     if (level === "alto" || level === "red") {
       showNotification(
-        "⚠️ SignalCheck - Alerta de Riesgo",
+        "⚠️ Chenuke - Alerta de Riesgo",
         `Se detectó un nivel de riesgo ALTO en una página.`,
         "warning"
       );
@@ -262,7 +262,7 @@ self.addEventListener("unhandledrejection", (event) => {
 // ACTIVACIÓN
 // ------------------------------------------------------
 self.addEventListener("activate", (event) => {
-  console.log("🚀 SignalCheck: Worker Activado");
+  console.log("🚀 Chenuke: Worker Activado");
   setupAlarms();
   event.waitUntil(clients.claim());
 });

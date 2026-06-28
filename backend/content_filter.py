@@ -1,7 +1,7 @@
 """content_filter.py — Filtro de contenido explícito (privacidad por diseño).
 
 Propósito ético (ETHICS.md §2.4 — Privacidad como derecho):
-Cuando el usuario navega contenido sexual/adulto, SignalCheck NO debe analizarlo,
+Cuando el usuario navega contenido sexual/adulto, Chenuke NO debe analizarlo,
 NO debe almacenar la URL en cache ni en logs, ni dejar rastro alguno de esa visita.
 La minimización de datos prima sobre la cobertura del análisis.
 

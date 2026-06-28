@@ -1,4 +1,4 @@
-"""Modelos SQLAlchemy — SignalCheck."""
+"""Modelos SQLAlchemy — Chenuke."""
 
 from __future__ import annotations
 

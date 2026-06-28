@@ -20,7 +20,7 @@ from backend.context_classifier import classify_context
 from backend.weight_engine import adjust_weights
 from backend.confidence_score import compute_confidence
 
-ENGINE_VERSION = "15.18-clean"
+ENGINE_VERSION = "15.19-clean"
 
 BASE_WEIGHTS = {
     "credibility": 0.10, "contradictions": 0.07, "authority": 0.08,
@@ -196,7 +196,7 @@ def analyze_context(text: str, url: str = "", title: str = "", is_ecommerce: boo
             return {
                 "score": None, "level": "insuficiente",
                 "message": "Texto insuficiente para análisis estructural",
-                "insight": "El contenido es demasiado corto para evaluar de forma confiable cómo está construido el mensaje. SignalCheck se abstiene en vez de dar un resultado injustificado.",
+                "insight": "El contenido es demasiado corto para evaluar de forma confiable cómo está construido el mensaje. Chenuke se abstiene en vez de dar un resultado injustificado.",
                 "signals": [], "confidence": None,
                 "context": context, "source_type": source_info.get("type", "unknown"),
                 "commercial_risk": comm_data, "engine_version": ENGINE_VERSION, "pro": {},

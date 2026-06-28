@@ -2,7 +2,7 @@
 
 ### 9. `README_secrets(1).md`
 ```markdown
-# Manejo de Secretos – App Pública (SignalCheck)
+# Manejo de Secretos – App Pública (Chenuke)
 
 > **NOTA:** Este documento describe el modelo de seguridad planificado para la v8.0. El estado actual (v15.1) utiliza autenticación simple mediante Headers HTTP (`x-extension-id` y `x-pro-token`).
 

@@ -1,4 +1,4 @@
-"""Ajuste de pesos por contexto y confianza de fuente — SignalCheck."""
+"""Ajuste de pesos por contexto y confianza de fuente — Chenuke."""
 
 from __future__ import annotations
 

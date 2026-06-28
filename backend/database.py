@@ -1,4 +1,4 @@
-"""Configuración de base de datos — SignalCheck."""
+"""Configuración de base de datos — Chenuke."""
 
 from __future__ import annotations
 

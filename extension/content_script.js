@@ -1,4 +1,4 @@
-// content_script.js — SignalCheck v15.x
+// content_script.js — Chenukek v15.x
 // Escucha mensajes del popup y extrae texto de la página.
 // NO modifica el DOM ni inyecta UI propia.
 'use strict';
