@@ -32,6 +32,18 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Limpia caracteres raros que algunas páginas meten y que pueden romper la API.
+function cleanTextForApi(text) {
+  return String(text || "")
+    .normalize("NFKC")
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ")
+    .replace(/[\u200B-\u200D\uFEFF]/g, " ")
+    .replace(/[\uD800-\uDFFF]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 12000);
+}
+
 function getHttpErrorMessage(status, rawText = "") {
   const cleanText = String(rawText || "").slice(0, 180);
 
@@ -56,6 +68,7 @@ function getUserErrorMessage(err) {
   if (msg.includes("Error interno")) return msg;
   if (msg.includes("Acceso no autorizado")) return msg;
   if (msg.includes("Solicitud inválida")) return msg;
+  if (msg.includes("Texto insuficiente")) return msg;
 
   return msg || "Error de conexión";
 }
@@ -146,6 +159,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (scoreEl) scoreEl.textContent = "--";
     if (confEl) confEl.textContent = "--";
 
+    if (summaryBox) summaryBox.classList.add("hidden");
+
     if (errorBox && errorMessage) {
       errorMessage.textContent = message;
       errorBox.classList.remove("hidden");
@@ -233,10 +248,21 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function fetchAnalysis(payload, attempt = 0) {
+    const safePayload = {
+      text: cleanTextForApi(payload?.text),
+      url: String(payload?.url || "").slice(0, 2048),
+      title: cleanTextForApi(payload?.title || "").slice(0, 300),
+      is_ecommerce: Boolean(payload?.is_ecommerce)
+    };
+
+    if (!safePayload.text || safePayload.text.length < 80) {
+      throw new Error("Texto insuficiente o error de extracción");
+    }
+
     const res = await fetchWithTimeout(API_URL, {
       method: "POST",
       headers: await buildHeaders(),
-      body: JSON.stringify(payload)
+      body: JSON.stringify(safePayload)
     });
 
     if (!res.ok) {
@@ -246,7 +272,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const delay = Math.pow(2, attempt) * 1000;
         console.log(`🔄 HTTP ${res.status}. Reintento ${attempt + 1} en ${delay}ms...`);
         await sleep(delay);
-        return fetchAnalysis(payload, attempt + 1);
+        return fetchAnalysis(safePayload, attempt + 1);
       }
 
       const error = new Error(getHttpErrorMessage(res.status, errorText));
@@ -319,7 +345,7 @@ document.addEventListener("DOMContentLoaded", () => {
         !extracted ||
         !extracted.ok ||
         !extracted.text ||
-        extracted.text.length < 30
+        cleanTextForApi(extracted.text).length < 30
       ) {
         showError("Texto insuficiente o error de extracción");
         stopScanUI();
