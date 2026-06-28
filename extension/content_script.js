@@ -5,8 +5,8 @@
 
 (function () {
   // Guard: evitar múltiples inyecciones
-  if (window.__signalcheck_injected) return;
-  window.__signalcheck_injected = true;
+  if (window.__chenuke_injected) return;
+  window.__chenuke_injected = true;
 
   /**
    * Extrae texto limpio de la página.
