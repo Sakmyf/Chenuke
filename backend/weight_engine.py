@@ -2,43 +2,61 @@
 
 from __future__ import annotations
 
+
 # ---------------------------------------------------------------------------
 # Umbrales de confianza
 # ---------------------------------------------------------------------------
+
 TRUST_HIGH_THRESHOLD = 0.8
 TRUST_LOW_THRESHOLD = 0.4
+
 
 # ---------------------------------------------------------------------------
 # Factores de ajuste por contexto
 # ---------------------------------------------------------------------------
-# Cada key es el nombre del módulo; el valor es el multiplicador a aplicar.
-# Los módulos NO listados aquí mantienen su peso base (factor = 1.0).
+
 _CONTEXT_MULTIPLIERS: dict[str, dict[str, float]] = {
     "health_science": {
         "scientific_claims": 1.5,
         "authority": 1.3,
         "emotions": 0.7,
     },
+
     "politics": {
-        "polarization": 1.4,
-        "misinformation": 1.2,
-        "emotions": 1.1,
+        "polarization": 1.25,
+        "misinformation": 1.15,
+        "emotions": 0.95,
+        "promises": 0.75,
     },
+
     "opinion": {
         "emotions": 0.6,
         "polarization": 0.7,
+        "promises": 0.6,
+        "narrative_patterns": 0.75,
     },
+
     "news": {
+        # En noticias, una palabra como "inversión", "crisis" o "alianzas"
+        # no debe disparar por sí sola riesgo comercial o promesas.
         "credibility": 0.7,
+        "urgency": 0.75,
+        "emotions": 0.70,
+        "promises": 0.60,
+        "narrative_patterns": 0.75,
+        "uncertainty": 0.85,
     },
+
     "news_media": {
         "credibility": 0.7,
+        "urgency": 0.75,
+        "emotions": 0.70,
+        "promises": 0.60,
+        "narrative_patterns": 0.75,
+        "uncertainty": 0.85,
     },
+
     "institutional": {
-        # Fuentes institucionales (.gob.ar, .edu, etc.): los módulos de
-        # manipulación narrativa no aplican con el mismo peso. Un trámite
-        # de gobierno usa "obligatoria", "necesitarás", "plazo", "condición"
-        # por naturaleza — no son señales de riesgo en ese contexto.
         "urgency": 0.40,
         "emotions": 0.40,
         "polarization": 0.40,
@@ -48,33 +66,47 @@ _CONTEXT_MULTIPLIERS: dict[str, dict[str, float]] = {
         "misinformation": 0.25,
         "structural": 0.35,
     },
+
     "ecommerce": {
-        # En contexto comercial, la presión de compra y las promesas son
-        # señales más relevantes que la polarización o la narrativa política.
-        "promises": 1.3,
-        "urgency": 1.2,
+        "promises": 1.35,
+        "urgency": 1.20,
         "credibility": 1.15,
-        "polarization": 0.6,
-        "narrative_patterns": 0.7,
+        "polarization": 0.60,
+        "narrative_patterns": 0.70,
+    },
+
+    "finance": {
+        "promises": 1.25,
+        "urgency": 1.15,
+        "credibility": 1.10,
+        "uncertainty": 1.10,
+        "polarization": 0.70,
     },
 }
+
 
 # ---------------------------------------------------------------------------
 # Factores de ajuste por nivel de confianza de la fuente
 # ---------------------------------------------------------------------------
+
 _TRUST_HIGH_MULTIPLIERS: dict[str, float] = {
     "credibility": 0.6,
     "misinformation": 0.7,
+    "uncertainty": 0.85,
 }
 
 _TRUST_LOW_MULTIPLIERS: dict[str, float] = {
     "credibility": 1.3,
     "misinformation": 1.3,
     "hypothetical": 1.2,
+    "uncertainty": 1.15,
 }
 
 
-def _apply_multipliers(weights: dict[str, float], multipliers: dict[str, float]) -> None:
+def _apply_multipliers(
+    weights: dict[str, float],
+    multipliers: dict[str, float],
+) -> None:
     """Aplica multiplicadores in-place sobre los pesos existentes."""
     for key, factor in multipliers.items():
         if key in weights:
@@ -82,16 +114,16 @@ def _apply_multipliers(weights: dict[str, float], multipliers: dict[str, float])
 
 
 def _renormalize(weights: dict[str, float]) -> dict[str, float]:
-    """Escala todos los pesos para que sumen 1.0.
-
-    Esto es crucial: sin renormalización, los ajustes contextuales
-    pueden hacer que la suma de pesos sea >1 o <1, causando que el
-    risk score final no esté acotado correctamente.
-    """
+    """Escala todos los pesos para que sumen 1.0."""
     total = sum(weights.values())
+
     if total == 0:
         return weights
-    return {k: v / total for k, v in weights.items()}
+
+    return {
+        key: value / total
+        for key, value in weights.items()
+    }
 
 
 def adjust_weights(
@@ -99,32 +131,28 @@ def adjust_weights(
     context: str,
     source_info: dict,
 ) -> dict[str, float]:
-    """Ajusta los pesos base según contexto y confianza de la fuente.
-
-    El proceso:
-    1. Copia los pesos base.
-    2. Aplica multiplicadores por contexto.
-    3. Aplica multiplicadores por nivel de confianza.
-    4. Renormaliza para que la suma siempre sea 1.0.
-    """
+    """Ajusta los pesos base según contexto y confianza de fuente."""
     weights = base_weights.copy()
     trust = float(source_info.get("trust_level", 0.55))
 
-    # 1) Ajuste por contexto
     context_mults = _CONTEXT_MULTIPLIERS.get(context)
+
     if context_mults is not None:
         _apply_multipliers(weights, context_mults)
 
-    # 2) Ajuste por confianza
     if trust > TRUST_HIGH_THRESHOLD:
         _apply_multipliers(weights, _TRUST_HIGH_MULTIPLIERS)
+
     elif trust < TRUST_LOW_THRESHOLD:
         _apply_multipliers(weights, _TRUST_LOW_MULTIPLIERS)
 
-    # 3) Renormalizar
     return _renormalize(weights)
 
 
 def normalize_scores(scores: dict) -> dict:
-    """Clamp de scores a [0.0, ∞). Usado por módulos individuales."""
-    return {k: max(0.0, float(v)) for k, v in scores.items() if v is not None}
+    """Clamp simple de scores individuales."""
+    return {
+        key: max(0.0, float(value))
+        for key, value in scores.items()
+        if value is not None
+    }
