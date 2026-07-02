@@ -30,4 +30,4 @@ El comando de arranque en producción estándar es:
 bash
 
 uvicorn backend.app:app --host 0.0.0.0 --port ${PORT:-8000} --workers 4
-(Asegúrate de que la variable de entorno PORT esté disponible en tu plataforma de deploy).
+(Asegúrate de que la variable de entorno PORT esté disponible en tu plataforma de deploy). 
