@@ -23,7 +23,7 @@ from backend.weight_engine import adjust_weights
 from backend.confidence_score import compute_confidence
 
 
-ENGINE_VERSION = "15.23-pro-full"
+ENGINE_VERSION = "15.24-pro-full"
 
 
 BASE_WEIGHTS = {
@@ -749,6 +749,7 @@ def analyze_context(
             "score": 0,
             "level": "medio",
             "message": "Error en el motor",
+            "insight": "Ocurrió un error interno durante el análisis. Reintentá en unos segundos.",
             "signals": [{
                 "label": "engine_error",
                 "detail": str(e),
@@ -756,4 +757,5 @@ def analyze_context(
             }],
             "confidence": 0,
             "engine_version": ENGINE_VERSION,
+            "pro": {},
         }
