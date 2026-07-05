@@ -23,7 +23,7 @@ from backend.weight_engine import adjust_weights
 from backend.confidence_score import compute_confidence
 
 
-ENGINE_VERSION = "15.23-landing-shield"
+ENGINE_VERSION = "15.23-pro-full"
 
 
 BASE_WEIGHTS = {
