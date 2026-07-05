@@ -236,6 +236,37 @@ def _collect_signals(module_results: dict) -> list:
     return signals
 
 
+def _collect_signals_full(module_results: dict) -> dict:
+    """Versión PRO: todas las señales sobre umbral, agrupadas por módulo,
+    con todas las evidencias textuales disponibles. Sin tope de 6."""
+    grouped = {}
+
+    for module_name, result in module_results.items():
+        n = normalize_result(result)
+
+        if not n["reasons"] and n["score"] < 0.05:
+            continue
+
+        entries = []
+
+        for i, reason in enumerate(n["reasons"]):
+            entries.append({
+                "label": SIGNAL_LABELS.get(
+                    reason,
+                    str(reason).replace("_", " ").capitalize(),
+                ),
+                "evidence": n["evidence"][i] if i < len(n["evidence"]) else "",
+            })
+
+        if entries:
+            grouped[module_name] = {
+                "score": int(n["score"] * 100),
+                "signals": entries,
+            }
+
+    return grouped
+
+
 _SCORE_ANCHORS = [
     (0.0, 0),
     (0.10, 22),
@@ -689,7 +720,25 @@ def analyze_context(
                             100 - scores.get("contradictions", 0) * 100,
                         )
                     ),
-                }
+                },
+                "dimensions": {
+                    key: {
+                        "score": int(scores.get(key, 0) * 100),
+                        "weight": round(weights.get(key, 0.1), 3),
+                        "weighted_contribution": round(
+                            scores.get(key, 0) * weights.get(key, 0.1),
+                            4,
+                        ),
+                    }
+                    for key in BASE_WEIGHTS.keys()
+                },
+                "signals_by_module": _collect_signals_full(module_results),
+                "commercial_risk": {
+                    "score": comm_data.get("score", 0),
+                    "level": comm_data.get("level", "none"),
+                    "summary": comm_data.get("summary", ""),
+                    "signals": comm_data.get("signals", []),
+                },
             },
         }
 
