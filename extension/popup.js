@@ -1,5 +1,5 @@
 // ======================================================
-// CHENUKE POPUP.JS – CLEAN FIXED VERSION
+// CHENUKE POPUP.JS – PRODUCTION READY
 // ======================================================
 
 const API_URL = "https://chenuke-production-8e78.up.railway.app/v3/verify";
@@ -20,7 +20,7 @@ async function buildHeaders() {
 
   try {
     const stored = await chrome.storage.local.get("pro_token");
-    if (stored && stored.pro_token) {
+    if (stored && stored.pro_token && typeof stored.pro_token === 'string') {
       headers["x-pro-token"] = stored.pro_token;
     }
   } catch (e) {}
@@ -32,7 +32,6 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Limpia caracteres raros que algunas páginas meten y que pueden romper la API.
 function cleanTextForApi(text) {
   return String(text || "")
     .normalize("NFKC")
@@ -104,25 +103,25 @@ async function setCachedResult(url, data) {
 function obtenerColorPorcentaje(valor, metrica) {
   const m = String(metrica || "").toLowerCase();
 
-  if (m === "emocionalidad" || m === "emotionality") {
+  if (m.includes("emocionalidad") || m.includes("emotionality")) {
     if (valor > 70) return "#ef4444";
     if (valor > 40) return "#facc15";
     return "#4ade80";
   }
 
-  if (m === "manipulación" || m === "manipulacion" || m === "manipulation") {
+  if (m.includes("manipulación") || m.includes("manipulacion") || m.includes("manipulation")) {
     if (valor > 70) return "#ef4444";
     if (valor > 40) return "#facc15";
     return "#4ade80";
   }
 
-  if (m === "evidencia" || m === "evidence") {
+  if (m.includes("evidencia") || m.includes("evidence")) {
     if (valor < 40) return "#ef4444";
     if (valor < 70) return "#facc15";
     return "#4ade80";
   }
 
-  if (m === "coherencia" || m === "coherence") {
+  if (m.includes("coherencia") || m.includes("coherence")) {
     if (valor < 40) return "#ef4444";
     if (valor < 70) return "#facc15";
     return "#4ade80";
@@ -133,11 +132,13 @@ function obtenerColorPorcentaje(valor, metrica) {
 
 document.addEventListener("DOMContentLoaded", () => {
   const analyzeBtn = document.getElementById("analyzeBtn");
+  const clearCacheBtn = document.getElementById("clearCacheBtn");
   const scanLine = document.getElementById("scanLine");
   const labelBadge = document.getElementById("labelBadge");
   const summaryBox = document.getElementById("summary");
   const scoreEl = document.getElementById("scoreValue");
   const confEl = document.getElementById("confidenceValue");
+  const cacheBadge = document.getElementById("cacheBadge");
 
   const upgradeBtn = document.getElementById("upgradeBtn");
   const proSection = document.getElementById("proSection");
@@ -155,16 +156,15 @@ document.addEventListener("DOMContentLoaded", () => {
       labelBadge.style.background = "rgba(239,68,68,0.2)";
       labelBadge.style.color = "#f87171";
     }
-
     if (scoreEl) scoreEl.textContent = "--";
     if (confEl) confEl.textContent = "--";
-
     if (summaryBox) summaryBox.classList.add("hidden");
-
     if (errorBox && errorMessage) {
       errorMessage.textContent = message;
       errorBox.classList.remove("hidden");
     }
+    if (cacheBadge) cacheBadge.classList.add("hidden");
+    if (clearCacheBtn) clearCacheBtn.classList.add("hidden");
   }
 
   function hideError() {
@@ -174,19 +174,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function startScanUI() {
     hideError();
-
     if (scanLine) scanLine.classList.add("active");
-
     if (labelBadge) {
       labelBadge.textContent = "Analizando contenido...";
       labelBadge.style.background = "#333";
       labelBadge.style.color = "#aaa";
     }
-
     if (summaryBox) summaryBox.classList.add("hidden");
     if (scoreEl) scoreEl.textContent = "--";
     if (confEl) confEl.textContent = "--";
     if (proList) proList.innerHTML = "";
+    if (cacheBadge) cacheBadge.classList.add("hidden");
+    if (clearCacheBtn) clearCacheBtn.classList.add("hidden");
   }
 
   function stopScanUI() {
@@ -196,10 +195,8 @@ document.addEventListener("DOMContentLoaded", () => {
   async function isContentScriptReady(tabId) {
     return new Promise((resolve) => {
       const timeout = setTimeout(() => resolve(false), 700);
-
       chrome.tabs.sendMessage(tabId, { type: "ping" }, (response) => {
         clearTimeout(timeout);
-
         if (chrome.runtime.lastError) {
           resolve(false);
         } else {
@@ -211,18 +208,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function ensureContentScript(tabId) {
     const ready = await isContentScriptReady(tabId);
-
-    if (ready) {
-      console.log("✅ Content script activo");
-      return;
-    }
-
+    if (ready) return;
     try {
       await chrome.scripting.executeScript({
         target: { tabId },
         files: ["content_script.js"]
       });
-
       await sleep(400);
     } catch (e) {
       console.warn("⚠️ No se pudo inyectar content script:", e);
@@ -232,13 +223,8 @@ document.addEventListener("DOMContentLoaded", () => {
   async function fetchWithTimeout(url, options) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
-
     try {
-      const res = await fetch(url, {
-        ...options,
-        signal: controller.signal
-      });
-
+      const res = await fetch(url, { ...options, signal: controller.signal });
       clearTimeout(timeoutId);
       return res;
     } catch (err) {
@@ -267,14 +253,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!res.ok) {
       const errorText = await res.text().catch(() => "");
-
       if (RETRY_HTTP_STATUS.includes(res.status) && attempt < MAX_RETRIES) {
         const delay = Math.pow(2, attempt) * 1000;
         console.log(`🔄 HTTP ${res.status}. Reintento ${attempt + 1} en ${delay}ms...`);
         await sleep(delay);
         return fetchAnalysis(safePayload, attempt + 1);
       }
-
       const error = new Error(getHttpErrorMessage(res.status, errorText));
       error.status = res.status;
       error.raw = errorText;
@@ -297,7 +281,6 @@ document.addEventListener("DOMContentLoaded", () => {
             reject(new Error("Error de comunicación con la página"));
             return;
           }
-
           resolve(extracted);
         }
       );
@@ -331,9 +314,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (!force) {
         const cached = await getCachedResult(tab.url);
-
         if (cached) {
-          renderResult(cached);
+          renderResult(cached, true); // true = fromCache
           stopScanUI();
           return;
         }
@@ -359,18 +341,14 @@ document.addEventListener("DOMContentLoaded", () => {
         is_ecommerce: extracted.is_ecommerce || false
       });
 
-      lastResult = {
-        ...data,
-        _timestamp: Date.now()
-      };
-
+      lastResult = { ...data, _timestamp: Date.now() };
       await setCachedResult(tab.url, lastResult);
 
       const elapsed = Date.now() - startTime;
       const delay = Math.max(0, MIN_TIME - elapsed);
 
       setTimeout(() => {
-        renderResult(data);
+        renderResult(data, false);
         stopScanUI();
       }, delay);
     } catch (err) {
@@ -380,8 +358,17 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function renderResult(data) {
+  function renderResult(data, fromCache = false) {
     hideError();
+
+    // Mostrar badge de caché si corresponde
+    if (fromCache && cacheBadge) {
+      cacheBadge.classList.remove("hidden");
+      if (clearCacheBtn) clearCacheBtn.classList.remove("hidden");
+    } else {
+      if (cacheBadge) cacheBadge.classList.add("hidden");
+      if (clearCacheBtn) clearCacheBtn.classList.add("hidden");
+    }
 
     const analysis = data?.analysis || data;
 
@@ -398,19 +385,12 @@ document.addEventListener("DOMContentLoaded", () => {
         labelBadge.style.background = "rgba(148,163,184,0.18)";
         labelBadge.style.color = "#cbd5e1";
       }
-
       if (scoreEl) scoreEl.textContent = "—";
       if (confEl) confEl.textContent = "—";
-
       if (summaryBox) {
-        summaryBox.textContent =
-          analysis.insight ||
-          analysis.message ||
-          "Chenuke no analiza ni registra páginas de contenido privado.";
-
+        summaryBox.textContent = analysis.insight || analysis.message || "Chenuke no analiza ni registra páginas de contenido privado.";
         summaryBox.classList.remove("hidden");
       }
-
       if (proSection) proSection.classList.add("locked");
       if (proWarning) proWarning.style.display = "none";
       if (upgradeBtn) upgradeBtn.style.display = "none";
@@ -424,19 +404,12 @@ document.addEventListener("DOMContentLoaded", () => {
         labelBadge.style.background = "rgba(148,163,184,0.18)";
         labelBadge.style.color = "#cbd5e1";
       }
-
       if (scoreEl) scoreEl.textContent = "—";
       if (confEl) confEl.textContent = "—";
-
       if (summaryBox) {
-        summaryBox.textContent =
-          analysis.insight ||
-          analysis.message ||
-          "El contenido es demasiado corto para un análisis estructural confiable.";
-
+        summaryBox.textContent = analysis.insight || analysis.message || "El contenido es demasiado corto para un análisis estructural confiable.";
         summaryBox.classList.remove("hidden");
       }
-
       if (proSection) proSection.classList.add("locked");
       if (proWarning) proWarning.style.display = "none";
       if (upgradeBtn) upgradeBtn.style.display = "none";
@@ -450,19 +423,12 @@ document.addEventListener("DOMContentLoaded", () => {
         labelBadge.style.background = "rgba(250,204,21,0.18)";
         labelBadge.style.color = "#facc15";
       }
-
       if (scoreEl) scoreEl.textContent = "!";
       if (confEl) confEl.textContent = "—";
-
       if (summaryBox) {
-        summaryBox.textContent =
-          analysis.insight ||
-          analysis.message ||
-          "Texto corto con señales de presión. Leé con cautela.";
-
+        summaryBox.textContent = analysis.insight || analysis.message || "Texto corto con señales de presión. Leé con cautela.";
         summaryBox.classList.remove("hidden");
       }
-
       if (proSection) proSection.classList.add("locked");
       if (proWarning) proWarning.style.display = "none";
       if (upgradeBtn) upgradeBtn.style.display = "none";
@@ -491,7 +457,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     let score = analysis.structural_index ?? analysis.score ?? 0;
-
     if (typeof score === "number") {
       if (score <= 1) {
         score = Math.round(score * 100);
@@ -501,11 +466,9 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       score = 0;
     }
-
     if (scoreEl) scoreEl.textContent = score;
 
     let conf = analysis.confidence ?? 0;
-
     if (typeof conf === "number") {
       if (conf <= 1) {
         conf = Math.round(conf * 100);
@@ -515,15 +478,10 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       conf = 0;
     }
-
     if (confEl) confEl.textContent = conf;
 
     if (summaryBox) {
-      summaryBox.textContent =
-        analysis.insight ||
-        analysis.message ||
-        "El contenido no presenta señales relevantes de manipulación o riesgo.";
-
+      summaryBox.textContent = analysis.insight || analysis.message || "El contenido no presenta señales relevantes de manipulación o riesgo.";
       summaryBox.classList.remove("hidden");
     }
 
@@ -538,60 +496,50 @@ document.addEventListener("DOMContentLoaded", () => {
       if (proSection) proSection.classList.remove("locked");
       if (proWarning) proWarning.style.display = "none";
       if (upgradeBtn) upgradeBtn.style.display = "none";
-
       if (proMetrics && proList) {
         proMetrics.classList.remove("hidden");
         proList.innerHTML = "";
-
         const metrics = analysis.metrics;
-
         if (metrics && Object.keys(metrics).length > 0) {
           for (const [key, value] of Object.entries(metrics)) {
             const numericValue = typeof value === "number" ? value : 0;
             const color = obtenerColorPorcentaje(numericValue, key);
-
             const li = document.createElement("li");
-
             li.style.display = "flex";
             li.style.justifyContent = "space-between";
             li.style.alignItems = "center";
             li.style.padding = "4px 0";
-
             li.innerHTML = `
               <span style="color:#94a3b8;">${key}</span>
               <strong style="color:${color}; font-size:13px;">${numericValue}%</strong>
             `;
-
             proList.appendChild(li);
           }
         } else {
           const li = document.createElement("li");
-
           li.style.textAlign = "center";
           li.style.color = "#64748b";
           li.style.fontStyle = "italic";
           li.textContent = "Métricas detalladas no disponibles";
-
           proList.appendChild(li);
         }
       }
     }
   }
 
+  // --- EVENT LISTENERS ---
+
   if (upgradeBtn) {
     upgradeBtn.addEventListener("click", () => {
       const raw = lastResult?.analysis || lastResult || {};
       const score = raw.score ?? "";
       const level = (raw.level ?? "").toLowerCase();
-
       const conf = raw.confidence != null
         ? Math.round(raw.confidence <= 1 ? raw.confidence * 100 : raw.confidence)
         : "";
-
       const url = score
         ? `${PRO_URL}?score=${score}&level=${level}&conf=${conf}`
         : PRO_URL;
-
       chrome.tabs.create({ url });
     });
   }
@@ -604,5 +552,23 @@ document.addEventListener("DOMContentLoaded", () => {
     retryErrorBtn.addEventListener("click", () => runAnalysis({ force: true }));
   }
 
+  if (clearCacheBtn) {
+    clearCacheBtn.addEventListener("click", async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab?.url) {
+          await chrome.storage.local.remove("chenuke_last_result");
+          if (cacheBadge) cacheBadge.classList.add("hidden");
+          if (clearCacheBtn) clearCacheBtn.classList.add("hidden");
+          // Re-analizar automáticamente
+          runAnalysis({ force: true });
+        }
+      } catch (e) {
+        console.warn("Error limpiando caché:", e);
+      }
+    });
+  }
+
+  // Iniciar análisis al abrir el popup
   runAnalysis({ force: false });
 });

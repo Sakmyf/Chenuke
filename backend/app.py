@@ -26,9 +26,10 @@ DEMO_KEY = os.getenv("DEMO_KEY", "")
 
 DEV_MODE = os.getenv("DEV_MODE", "true").lower() == "true"
 
+# CAMBIO: Rate limit subido a 60/minuto para evitar frustración en usuarios
 VERIFY_RATE_LIMIT = os.getenv(
     "VERIFY_RATE_LIMIT",
-    "300/minute" if DEV_MODE else "20/minute"
+    "60/minute" if DEV_MODE else "60/minute"
 )
 
 DEMO_RATE_LIMIT = os.getenv(
@@ -53,8 +54,9 @@ async def _get_key_lock(key: str) -> asyncio.Lock:
             _key_locks[key] = asyncio.Lock()
         return _key_locks[key]
 
+# CAMBIO: Workers configurables desde entorno (default 2 para 1 vCPU)
 _executor = ThreadPoolExecutor(
-    max_workers=int(os.getenv("ANALYSIS_WORKERS", "4"))
+    max_workers=int(os.getenv("ANALYSIS_WORKERS", "2"))
 )
 
 # ======================================================
@@ -494,4 +496,4 @@ async def demo(req: DemoRequest, request: Request):
             "status": "success",
             "cached": False,
             "analysis": response["analysis"]
-        }# redeploy 
+        }

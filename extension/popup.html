@@ -16,12 +16,7 @@
     </header>
 
     <!-- ESTADO DE CARGA / SCAN -->
-    <!-- aria-hidden porque es una animación indeterminada, el estado se anuncia en el badge de abajo -->
-    <div 
-      class="scan-line" 
-      id="scanLine" 
-      aria-hidden="true"
-    ></div>
+    <div class="scan-line" id="scanLine" aria-hidden="true"></div>
 
     <!-- INDICADOR DE CACHÉ -->
     <div id="cacheBadge" class="cache-badge hidden" role="status" aria-live="polite">
@@ -35,13 +30,7 @@
     </div>
 
     <!-- BADGE DE NIVEL DE RIESGO -->
-    <div 
-      id="labelBadge" 
-      class="signal-label" 
-      role="status" 
-      aria-live="assertive" 
-      aria-atomic="true"
-    >
+    <div id="labelBadge" class="signal-label" role="status" aria-live="assertive" aria-atomic="true">
       Listo para analizar
     </div>
 
@@ -69,11 +58,7 @@
     </div>
 
     <!-- PRO SECTION -->
-    <section 
-      id="proSection" 
-      class="pro-section locked" 
-      aria-label="Funciones premium"
-    >
+    <section id="proSection" class="pro-section locked" aria-label="Funciones premium">
       <div id="proWarning" class="warning hidden" role="alert">
         <span aria-hidden="true">⚠️</span> Hay señales más profundas que no estás viendo
       </div>
@@ -83,29 +68,18 @@
         <ul id="proList" class="pro-list" role="list"></ul>
       </div>
       
-      <button 
-        id="upgradeBtn" 
-        class="upgrade-btn" 
-        aria-label="Desbloquear análisis completo"
-      >
+      <button id="upgradeBtn" class="upgrade-btn" aria-label="Desbloquear análisis completo en Chenuke.com">
         <span aria-hidden="true">🔓</span> Ver análisis completo
       </button>
     </section>
 
     <!-- ACCIONES -->
     <footer class="actions" role="contentinfo">
-      <button 
-        id="analyzeBtn" 
-        aria-label="Iniciar nuevo análisis de la página"
-      >
+      <button id="analyzeBtn" aria-label="Iniciar nuevo análisis de la página">
         Analizar página
       </button>
       
-      <button 
-        id="clearCacheBtn" 
-        class="secondary-btn hidden" 
-        aria-label="Limpiar caché de análisis"
-      >
+      <button id="clearCacheBtn" class="secondary-btn hidden" aria-label="Limpiar caché de análisis">
         <span aria-hidden="true">🗑️</span> Limpiar caché
       </button>
     </footer>

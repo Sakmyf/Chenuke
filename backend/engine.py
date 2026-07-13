@@ -1,8 +1,8 @@
 import re
 import traceback
-from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
+# Importaciones de los módulos de análisis
 from backend.Analysis.credibility import analyze as analyze_credibility
 from backend.Analysis.contradictions import analyze_contradictions
 from backend.Analysis.authority import analyze_authority
@@ -17,10 +17,15 @@ from backend.Analysis.promises import check_promises
 from backend.Analysis.detect_uncertainty import detect_uncertainty
 from backend.Analysis.commercial_risk import analyze_commercial_risk
 from backend.Analysis.structural import check_structural
+
+# Importaciones del sistema
 from backend.source_analyzer import analyze_source
 from backend.context_classifier import classify_context
 from backend.weight_engine import adjust_weights
 from backend.confidence_score import compute_confidence
+
+# === CAMBIO CRÍTICO: Importamos el pool global de hilos desde app.py ===
+from backend.app import _executor as GLOBAL_EXECUTOR
 
 
 ENGINE_VERSION = "15.24-pro-full"
@@ -45,7 +50,7 @@ BASE_WEIGHTS = {
 
 SIGNAL_LABELS = {
     "urgency_pressure": "Presión de urgencia artificial",
-    "manipulación emocional": "Manipulación emocional",
+    "manipulación_emocional": "Manipulación emocional",
     "exaggerated_promises": "Promesas absolutas o garantías exageradas",
     "wealth_lure_pattern": "Promesa de ganancia o enriquecimiento",
     "polarization_detected": "Lenguaje polarizador",
@@ -485,42 +490,36 @@ def analyze_context(
         source_info = analyze_source(url, text)
         weights = adjust_weights(BASE_WEIGHTS, context, source_info)
 
-        with ThreadPoolExecutor(max_workers=14) as executor:
-            futures = {
-                "credibility": executor.submit(analyze_credibility, text),
-                "contradictions": executor.submit(analyze_contradictions, text),
-                "authority": executor.submit(analyze_authority, text),
-                "urgency": executor.submit(check_urgency, text),
-                "emotions": executor.submit(check_emotions, text),
-                "polarization": executor.submit(check_polarization, text),
-                "misinformation": executor.submit(check_misinformation, text),
-                "scientific_claims": executor.submit(check_scientific_claims, text),
-                "narrative_patterns": executor.submit(analyze_narrative_patterns, text),
-                "hypothetical": executor.submit(check_hypothetical, text),
-                "promises": executor.submit(check_promises, text),
-                "uncertainty": executor.submit(
-                    detect_uncertainty,
-                    text,
-                    title,
-                    context,
-                ),
-                "structural": executor.submit(check_structural, text),
-                "commercial_risk": executor.submit(
-                    analyze_commercial_risk,
-                    text,
-                    url,
-                    context,
-                ),
-            }
+        # === CAMBIO CRÍTICO: Usamos el pool global de hilos importado desde app.py ===
+        futures = {}
 
-            results = {}
+        for name, func in [
+            ("credibility", analyze_credibility),
+            ("contradictions", analyze_contradictions),
+            ("authority", analyze_authority),
+            ("urgency", check_urgency),
+            ("emotions", check_emotions),
+            ("polarization", check_polarization),
+            ("misinformation", check_misinformation),
+            ("scientific_claims", check_scientific_claims),
+            ("narrative_patterns", analyze_narrative_patterns),
+            ("hypothetical", check_hypothetical),
+            ("promises", check_promises),
+            ("uncertainty", lambda: detect_uncertainty(text, title, context)),
+            ("structural", check_structural),
+            ("commercial_risk", lambda: analyze_commercial_risk(text, url, context)),
+        ]:
+            futures[name] = GLOBAL_EXECUTOR.submit(func)
 
-            for name, future in futures.items():
-                try:
-                    results[name] = future.result(timeout=2.0)
-                except Exception:
-                    traceback.print_exc()
-                    results[name] = None
+        results = {}
+
+        for name, future in futures.items():
+            try:
+                # Timeout aumentado a 3.0s para dar margen en módulos pesados
+                results[name] = future.result(timeout=3.0)
+            except Exception:
+                traceback.print_exc()
+                results[name] = None
 
         scores = {
             key: _get_score(results[key])

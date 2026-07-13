@@ -1,18 +1,13 @@
-// Chenuke - Service Worker MV3 (CORREGIDO v2)
+// Chenuke - Service Worker MV3 (PRODUCCIÓN)
 
 console.log("🔥 Chenuke: Service Worker Inicializado");
 
-// ------------------------------------------------------
-// CONFIGURACIÓN
-// ------------------------------------------------------
-const MAINTENANCE_INTERVAL = 60; // minutos (para limpieza de caché)
+const MAINTENANCE_INTERVAL = 60;
 const ANALYSIS_CACHE_PREFIX = "analysis_";
-const CACHE_MAX_AGE = 24 * 60 * 60 * 1000; // 24 horas
+const CACHE_MAX_AGE = 24 * 60 * 60 * 1000;
 const API_URL = "https://chenuke-production-8e78.up.railway.app/v3/verify";
 
-// ------------------------------------------------------
-// PERSISTENCIA Y MANTENIMIENTO
-// ------------------------------------------------------
+// --- ALARMA DE MANTENIMIENTO ---
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "maintenance") {
     console.log("⏰ Ejecutando mantenimiento programado...");
@@ -20,7 +15,6 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 });
 
-// Crear alarma al instalar/activar
 function setupAlarms() {
   chrome.alarms.get("maintenance", (existing) => {
     if (!existing) {
@@ -32,13 +26,10 @@ function setupAlarms() {
   });
 }
 
-// ------------------------------------------------------
-// INSTALACIÓN / ACTUALIZACIÓN
-// ------------------------------------------------------
+// --- INSTALACIÓN / ACTUALIZACIÓN ---
 chrome.runtime.onInstalled.addListener((details) => {
   console.log("✅ Chenuke: Instalada/Actualizada", details.reason);
   setupAlarms();
-  
   if (details.reason === "update") {
     cleanOldCache();
   }
@@ -49,15 +40,12 @@ chrome.runtime.onStartup.addListener(() => {
   setupAlarms();
 });
 
-// ------------------------------------------------------
-// LIMPIEZA DE CACHÉ
-// ------------------------------------------------------
+// --- LIMPIEZA DE CACHÉ ---
 async function cleanOldCache() {
   try {
     const allStorage = await chrome.storage.local.get(null);
     const now = Date.now();
     const keysToRemove = [];
-    
     for (const [key, value] of Object.entries(allStorage)) {
       if (key.startsWith(ANALYSIS_CACHE_PREFIX)) {
         const age = now - (value.timestamp || 0);
@@ -66,7 +54,6 @@ async function cleanOldCache() {
         }
       }
     }
-    
     if (keysToRemove.length > 0) {
       await chrome.storage.local.remove(keysToRemove);
       console.log(`🗑️ Caché limpiada: ${keysToRemove.length} entradas viejas`);
@@ -76,22 +63,14 @@ async function cleanOldCache() {
   }
 }
 
-// ------------------------------------------------------
-// CACHE DE ANÁLISIS
-// ------------------------------------------------------
-// FIX: Usar encodeURIComponent en lugar de btoa para evitar crashes con URLs Unicode
+// --- CACHE DE ANÁLISIS ---
 function getUrlKey(url) {
   return ANALYSIS_CACHE_PREFIX + encodeURIComponent(url);
 }
 
 async function saveAnalysisCache(url, data) {
   const key = getUrlKey(url);
-  const payload = {
-    ...data,
-    timestamp: Date.now(),
-    _cached: true
-  };
-  
+  const payload = { ...data, timestamp: Date.now(), _cached: true };
   try {
     await chrome.storage.local.set({ [key]: payload });
     console.log("💾 Análisis guardado en caché");
@@ -102,19 +81,15 @@ async function saveAnalysisCache(url, data) {
 
 async function getAnalysisCache(url) {
   const key = getUrlKey(url);
-  
   try {
     const result = await chrome.storage.local.get(key);
     const cached = result[key];
-    
     if (!cached) return null;
-    
     const age = Date.now() - (cached.timestamp || 0);
     if (age > CACHE_MAX_AGE) {
       await chrome.storage.local.remove(key);
       return null;
     }
-    
     return cached;
   } catch (err) {
     console.error("❌ Error leyendo caché:", err);
@@ -122,9 +97,7 @@ async function getAnalysisCache(url) {
   }
 }
 
-// ------------------------------------------------------
-// HELPERS DE API
-// ------------------------------------------------------
+// --- HELPERS DE API ---
 async function buildHeaders() {
   const headers = {
     "Content-Type": "application/json",
@@ -132,16 +105,14 @@ async function buildHeaders() {
   };
   try {
     const stored = await chrome.storage.local.get("pro_token");
-    if (stored && stored.pro_token) {
+    if (stored && stored.pro_token && typeof stored.pro_token === 'string') {
       headers["x-pro-token"] = stored.pro_token;
     }
-  } catch (e) { /* sin token PRO */ }
+  } catch (e) {}
   return headers;
 }
 
-// ------------------------------------------------------
-// NOTIFICACIONES
-// ------------------------------------------------------
+// --- NOTIFICACIONES ---
 function showNotification(title, message, level = "info") {
   chrome.notifications.create({
     type: "basic",
@@ -152,19 +123,16 @@ function showNotification(title, message, level = "info") {
   });
 }
 
-// ------------------------------------------------------
-// ANÁLISIS EN BACKGROUND
-// ------------------------------------------------------
+// --- ANÁLISIS EN BACKGROUND ---
 async function runBackgroundAnalysis(tabId, url, text, isEcommerce, title = "") {
   console.log("🔬 Análisis en background iniciado");
-  
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s para background
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s igual que popup
     
     const res = await fetch(API_URL, {
       method: "POST",
-      headers: await buildHeaders(), // FIX: Ahora incluye el token PRO
+      headers: await buildHeaders(),
       body: JSON.stringify({
         text: text,
         url: url,
@@ -175,15 +143,10 @@ async function runBackgroundAnalysis(tabId, url, text, isEcommerce, title = "") 
     });
     
     clearTimeout(timeoutId);
-    
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-    
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     await saveAnalysisCache(url, data);
     
-    // MEJORA: Solo notificar si el riesgo es Alto para no hacer spam
     const level = data?.analysis?.level || "desconocido";
     if (level === "alto" || level === "red") {
       showNotification(
@@ -192,10 +155,8 @@ async function runBackgroundAnalysis(tabId, url, text, isEcommerce, title = "") 
         "warning"
       );
     }
-    
     console.log("✅ Análisis en background completado");
     return data;
-    
   } catch (err) {
     console.error("❌ Error en background analysis:", err);
     await saveAnalysisCache(url, {
@@ -207,60 +168,41 @@ async function runBackgroundAnalysis(tabId, url, text, isEcommerce, title = "") 
   }
 }
 
-// ------------------------------------------------------
-// LISTENER DE MENSAJES
-// ------------------------------------------------------
+// --- LISTENER DE MENSAJES ---
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  
-  // Test de vida (Ping) - Síncrono
   if (message.type === "ping") {
     sendResponse({ status: "alive", timestamp: Date.now() });
-    return false; // FIX: false para cerrar el puerto inmediatamente
+    return false;
   }
-  
-  // Obtener caché de análisis - Asíncrono
   if (message.type === "GET_CACHED_ANALYSIS") {
     getAnalysisCache(message.url).then(cached => {
       sendResponse({ found: !!cached, data: cached });
     });
-    return true; // Mantener abierto para async
+    return true;
   }
-  
-  // Iniciar análisis en background - Asíncrono
   if (message.type === "START_BACKGROUND_ANALYSIS") {
     const { tabId, url, text, is_ecommerce, title } = message;
-    
-    // Responder inmediatamente que se recibió
     sendResponse({ accepted: true, tabId });
-    
-    // Ejecutar en background (no bloquea el sendResponse)
     runBackgroundAnalysis(tabId, url, text, is_ecommerce, title);
-    return false; // FIX: Ya respondimos arriba, así que false.
+    return false;
   }
-  
-  // Limpiar caché manualmente - Asíncrono
   if (message.type === "CLEAR_CACHE") {
     cleanOldCache().then(() => {
       sendResponse({ cleared: true });
     });
-    return true; // Mantener abierto para async
+    return true;
   }
 });
 
-// ------------------------------------------------------
-// MANEJO DE ERRORES GLOBALES
-// ------------------------------------------------------
+// --- MANEJO DE ERRORES GLOBALES ---
 self.addEventListener("error", (event) => {
   console.error("❌ Error en Service Worker:", event.message, event.filename, event.lineno);
 });
-
 self.addEventListener("unhandledrejection", (event) => {
   console.error("❌ Promesa rechazada no manejada:", event.reason);
 });
 
-// ------------------------------------------------------
-// ACTIVACIÓN
-// ------------------------------------------------------
+// --- ACTIVACIÓN ---
 self.addEventListener("activate", (event) => {
   console.log("🚀 Chenuke: Worker Activado");
   setupAlarms();
