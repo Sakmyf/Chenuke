@@ -456,17 +456,26 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    let score = analysis.structural_index ?? analysis.score ?? 0;
+        let score = analysis.structural_index ?? analysis.score ?? 0;
     if (typeof score === "number") {
-      if (score <= 1) {
-        score = Math.round(score * 100);
-      } else {
-        score = Math.min(Math.round(score), 100);
-      }
+        if (score <= 1) {
+            score = Math.round(score * 100);
+        } else {
+            score = Math.min(Math.round(score), 100);
+        }
     } else {
-      score = 0;
+        score = 0;
     }
-    if (scoreEl) scoreEl.textContent = score;
+
+    // 🛑 CAMBIO IMPORTANTE: Ocultar el número en la versión FREE
+    const plan = data?.meta?.plan || "free"; // Detecta si es free o pro
+    if (scoreEl) {
+        if (plan === "free") {
+            scoreEl.textContent = "—"; // Usuario FREE solo ve un guion
+        } else {
+            scoreEl.textContent = score; // Usuario PRO/PREMIUM ve el número real
+        }
+    }
 
     let conf = analysis.confidence ?? 0;
     if (typeof conf === "number") {
