@@ -495,8 +495,10 @@ document.addEventListener("DOMContentLoaded", () => {
       summaryBox.classList.remove("hidden");
     }
 
-    // ✅ Usamos la misma variable 'plan' declarada arriba
-    if (plan === "free") {
+    // ✅ CAMBIO DEFINITIVO: Cambiamos el nombre a 'userPlan' para evitar conflicto con la variable de arriba
+    const userPlan = data?.meta?.plan || "free";
+
+    if (userPlan === "free") {
       if (proSection) proSection.classList.add("locked");
       if (proWarning) proWarning.style.display = "flex";
       if (upgradeBtn) upgradeBtn.style.display = "block";
