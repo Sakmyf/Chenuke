@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Chenuke",
   "version": "0.4.0",
-  "description": "Chénuke Engine: Herramienta de análisis estructural de contenido para plataformas de e-commerce. Optimiza estrategias de venta con métricas en tiempo real.",
+  "description": "Chenuke: Análisis estructural para detectar manipulación en contenido web y e-commerce. Optimiza ventas con métricas.",
   "author": "Chenuke Team",
   "homepage_url": "https://chenuke.com",
   "minimum_chrome_version": "102",
