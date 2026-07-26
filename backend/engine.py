@@ -1,6 +1,7 @@
 import re
 import traceback
 from urllib.parse import urlparse
+from functools import partial  # 👈 IMPORTANTE: agregamos partial
 
 # Importaciones de los módulos de análisis
 from backend.Analysis.credibility import analyze as analyze_credibility
@@ -17,7 +18,6 @@ from backend.Analysis.promises import check_promises
 from backend.Analysis.detect_uncertainty import detect_uncertainty
 from backend.Analysis.commercial_risk import analyze_commercial_risk
 from backend.Analysis.structural import check_structural
-# 👇 NUEVO MÓDULO DE FALACIAS LÓGICAS
 from backend.Analysis.logical_fallacies import analyze as check_logical_fallacies
 
 # Importaciones del sistema
@@ -47,7 +47,7 @@ BASE_WEIGHTS = {
     "promises": 0.10,
     "uncertainty": 0.13,
     "structural": 0.10,
-    "logical_fallacies": 0.08,  # 👈 NUEVO
+    "logical_fallacies": 0.08,
 }
 
 
@@ -78,7 +78,6 @@ SIGNAL_LABELS = {
     "absolute_generalization": "Generalización absoluta desproporcionada",
     "clickbait_structure": "Estructura tipo clickbait",
     "excessive_uppercase": "Uso excesivo de mayúsculas",
-    # 👇 NUEVAS SEÑALES PARA FALACIAS LÓGICAS
     "falso_dilema": "Falso dilema (falsa dicotomía)",
     "ad_hominem": "Ataque ad hominem",
     "generalización_apresurada": "Generalización apresurada",
@@ -249,8 +248,6 @@ def _collect_signals(module_results: dict) -> list:
 
 
 def _collect_signals_full(module_results: dict) -> dict:
-    """Versión PRO: todas las señales sobre umbral, agrupadas por módulo,
-    con todas las evidencias textuales disponibles. Sin tope de 6."""
     grouped = {}
 
     for module_name, result in module_results.items():
@@ -421,7 +418,6 @@ def _apply_risk_shields(
         return min(risk_score, 0.18)
 
     if news_like and not landing_intent:
-        # Evita falsos positivos tipo nota económica con "inversión".
         return min(risk_score, 0.42)
 
     return risk_score
@@ -462,7 +458,6 @@ def _apply_critical_floors(
     if has_promise and financial_landing:
         return max(risk_score, 0.50)
 
-    # Nunca aplicar piso comercial fuerte a una noticia sin landing.
     if news_like and not financial_landing:
         return risk_score
 
@@ -497,34 +492,31 @@ def analyze_context(
         source_info = analyze_source(url, text)
         weights = adjust_weights(BASE_WEIGHTS, context, source_info)
 
-        # === CAMBIO CRÍTICO: Usamos el pool global de hilos importado desde app.py ===
+        # ============================================================
+        # CORRECCIÓN: Usamos partial para pasar los argumentos
+        # ============================================================
         futures = {}
 
-        for name, func in [
-            ("credibility", analyze_credibility),
-            ("contradictions", analyze_contradictions),
-            ("authority", analyze_authority),
-            ("urgency", check_urgency),
-            ("emotions", check_emotions),
-            ("polarization", check_polarization),
-            ("misinformation", check_misinformation),
-            ("scientific_claims", check_scientific_claims),
-            ("narrative_patterns", analyze_narrative_patterns),
-            ("hypothetical", check_hypothetical),
-            ("promises", check_promises),
-            ("uncertainty", lambda: detect_uncertainty(text, title, context)),
-            ("structural", check_structural),
-            ("commercial_risk", lambda: analyze_commercial_risk(text, url, context)),
-            # 👇 NUEVO MÓDULO DE FALACIAS LÓGICAS
-            ("logical_fallacies", lambda: check_logical_fallacies(text)),
-        ]:
-            futures[name] = GLOBAL_EXECUTOR.submit(func)
+        futures["credibility"] = GLOBAL_EXECUTOR.submit(partial(analyze_credibility, text))
+        futures["contradictions"] = GLOBAL_EXECUTOR.submit(partial(analyze_contradictions, text))
+        futures["authority"] = GLOBAL_EXECUTOR.submit(partial(analyze_authority, text))
+        futures["urgency"] = GLOBAL_EXECUTOR.submit(partial(check_urgency, text))
+        futures["emotions"] = GLOBAL_EXECUTOR.submit(partial(check_emotions, text))
+        futures["polarization"] = GLOBAL_EXECUTOR.submit(partial(check_polarization, text))
+        futures["misinformation"] = GLOBAL_EXECUTOR.submit(partial(check_misinformation, text))
+        futures["scientific_claims"] = GLOBAL_EXECUTOR.submit(partial(check_scientific_claims, text))
+        futures["narrative_patterns"] = GLOBAL_EXECUTOR.submit(partial(analyze_narrative_patterns, text))
+        futures["hypothetical"] = GLOBAL_EXECUTOR.submit(partial(check_hypothetical, text))
+        futures["promises"] = GLOBAL_EXECUTOR.submit(partial(check_promises, text))
+        futures["uncertainty"] = GLOBAL_EXECUTOR.submit(partial(detect_uncertainty, text, title, context))
+        futures["structural"] = GLOBAL_EXECUTOR.submit(partial(check_structural, text))
+        futures["commercial_risk"] = GLOBAL_EXECUTOR.submit(partial(analyze_commercial_risk, text, url, context))
+        futures["logical_fallacies"] = GLOBAL_EXECUTOR.submit(partial(check_logical_fallacies, text))
 
         results = {}
 
         for name, future in futures.items():
             try:
-                # Timeout aumentado a 3.0s para dar margen en módulos pesados
                 results[name] = future.result(timeout=3.0)
             except Exception:
                 traceback.print_exc()
