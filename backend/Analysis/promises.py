@@ -1,6 +1,6 @@
 """promises — Detección de promesas exageradas o garantías absolutas.
 
-Chenuke v15.21
+Chenuke v15.24
 Detecta:
 - ganancias fáciles
 - retornos exagerados
@@ -8,6 +8,7 @@ Detecta:
 - garantías absolutas
 - bajo riesgo financiero prometido
 - cambio de vida / transformación económica
+- estafas de trading, cursos milagrosos, sistemas automáticos
 """
 
 from __future__ import annotations
@@ -30,13 +31,13 @@ _MAX_EVIDENCE: int = 6
 
 
 # ======================================================
-# PATRONES
+# PATRONES (ampliados)
 # ======================================================
 
 PROMISE_RE: Final[list[re.Pattern]] = [
     re.compile(p, re.IGNORECASE)
     for p in (
-        # Dinero / ingresos
+        # Dinero / ingresos (existentes)
         r"gan[aáe]?\s+dinero\s+(?:rápido|fácil|desde casa)",
         r"dinero\s+extra",
         r"segundo\s+ingreso",
@@ -46,14 +47,14 @@ PROMISE_RE: Final[list[re.Pattern]] = [
         r"aprend[eé]\s+y\s+gan[aáe]",
         r"aprend[eé]\s+trading",
 
-        # Facilidad exagerada
+        # Facilidad exagerada (existentes)
         r"sin\s+experiencia",
         r"sin\s+entrevista",
         r"tareas\s+sencillas",
         r"desde\s+casa",
         r"paso\s+a\s+paso",
 
-        # Trading / inversión
+        # Trading / inversión (existentes)
         r"rentabilidad\s+asegurada",
         r"ganancias?\s+aseguradas?",
         r"sin\s+riesgo",
@@ -62,15 +63,26 @@ PROMISE_RE: Final[list[re.Pattern]] = [
         r"no\s+operes\s+solo",
         r"mercados?\s+reales",
 
-        # Porcentajes / retornos
+        # Porcentajes / retornos (existentes)
         r"\+\s?\d{2,4}\s?%",
         r"\b\d{2,4}\s?%\s*(?:de\s*)?(?:ganancia|rentabilidad|retorno|beneficio)",
 
-        # Transformación emocional
+        # Transformación emocional (existentes)
         r"tu\s+vida\s+va\s+a\s+cambiar",
         r"libertad\s+financiera",
         r"viv[ií]\s+como\s+soñ[aá]s",
         r"cambi[aá]\s+tu\s+vida",
+
+        # ===== NUEVOS PATRONES (estafas modernas) =====
+        # Ganancias sin esfuerzo / automáticas
+        r"(?:gana|ganar|obtén)\s+(?:dinero|ingresos)\s+(?:sin\s+esfuerzo|fácil|automáticamente)",
+        r"(?:sistema|estrategia|método)\s+(?:probado|revolucionario|exclusivo)\s+(?:de\s+trading|de\s+inversión)",
+        r"(?:curso|entrenamiento)\s+(?:gratuito|exclusivo)\s+(?:por\s+tiempo\s+limitado)",
+        r"(?:oportunidad|inversión)\s+(?:única|exclusiva)\s+(?:para\s+ti|solo\s+hoy)",
+        r"(?:garantía|retorno)\s+(?:del\s+100%|total|absoluto)",
+        r"(?:sin\s+riesgo|riesgo\s+cero)\s+(?:de\s+perder|de\s+fracasar)",
+        r"(?:multiplica|duplica|triplica)\s+tu\s+(?:dinero|inversión)",
+        r"(?:sistema\s+automático|bot)\s+(?:de\s+trading|de\s+inversión)",
     )
 ]
 

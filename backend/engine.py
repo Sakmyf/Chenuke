@@ -17,6 +17,8 @@ from backend.Analysis.promises import check_promises
 from backend.Analysis.detect_uncertainty import detect_uncertainty
 from backend.Analysis.commercial_risk import analyze_commercial_risk
 from backend.Analysis.structural import check_structural
+# 👇 NUEVO MÓDULO DE FALACIAS LÓGICAS
+from backend.Analysis.logical_fallacies import analyze as check_logical_fallacies
 
 # Importaciones del sistema
 from backend.source_analyzer import analyze_source
@@ -45,6 +47,7 @@ BASE_WEIGHTS = {
     "promises": 0.10,
     "uncertainty": 0.13,
     "structural": 0.10,
+    "logical_fallacies": 0.08,  # 👈 NUEVO
 }
 
 
@@ -75,6 +78,10 @@ SIGNAL_LABELS = {
     "absolute_generalization": "Generalización absoluta desproporcionada",
     "clickbait_structure": "Estructura tipo clickbait",
     "excessive_uppercase": "Uso excesivo de mayúsculas",
+    # 👇 NUEVAS SEÑALES PARA FALACIAS LÓGICAS
+    "falso_dilema": "Falso dilema (falsa dicotomía)",
+    "ad_hominem": "Ataque ad hominem",
+    "generalización_apresurada": "Generalización apresurada",
 }
 
 
@@ -508,6 +515,8 @@ def analyze_context(
             ("uncertainty", lambda: detect_uncertainty(text, title, context)),
             ("structural", check_structural),
             ("commercial_risk", lambda: analyze_commercial_risk(text, url, context)),
+            # 👇 NUEVO MÓDULO DE FALACIAS LÓGICAS
+            ("logical_fallacies", lambda: check_logical_fallacies(text)),
         ]:
             futures[name] = GLOBAL_EXECUTOR.submit(func)
 

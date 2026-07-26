@@ -1,8 +1,9 @@
 // ======================================================
-// CHENUKE POPUP.JS – PRODUCTION READY
+// CHENUKE POPUP.JS – PRODUCTION READY + DEEPSEEK IA
 // ======================================================
 
 const API_URL = "https://chenuke-production-8e78.up.railway.app/v3/verify";
+const CHAT_API_URL = "https://chenuke-production-8e78.up.railway.app/v3/chat-analysis";
 const PRO_URL = "https://chenuke.com/analysis";
 
 const API_TIMEOUT = 30000;
@@ -11,6 +12,10 @@ const CACHE_TTL = 30000;
 const RETRY_HTTP_STATUS = [502, 503, 504];
 
 let lastResult = null;
+
+// ======================================================
+// FUNCIONES EXISTENTES (sin cambios)
+// ======================================================
 
 async function buildHeaders() {
   const headers = {
@@ -130,6 +135,98 @@ function obtenerColorPorcentaje(valor, metrica) {
   return "#f1f5f9";
 }
 
+// ======================================================
+// NUEVA FUNCIÓN: ACTUALIZAR BOTÓN DE IA SEGÚN PLAN
+// ======================================================
+
+function updateAIButton(plan) {
+  const aiBtnText = document.getElementById("aiBtnText");
+  const aiBtn = document.getElementById("aiAnalyzeBtn");
+  if (!aiBtnText || !aiBtn) return;
+  
+  if (plan === "pro" || plan === "premium") {
+    aiBtnText.textContent = "🤖 Analizar con IA";
+    aiBtn.disabled = false;
+    aiBtn.style.opacity = "1";
+  } else {
+    aiBtnText.textContent = "🔒 Actualizar a PRO";
+    aiBtn.disabled = false;
+    aiBtn.style.opacity = "0.8";
+  }
+}
+
+// ======================================================
+// NUEVA FUNCIÓN: ANÁLISIS CON IA (DEEPSEEK)
+// ======================================================
+
+async function runAIAnalysis() {
+  const userPlan = lastResult?.meta?.plan || "free";
+  const aiBtn = document.getElementById("aiAnalyzeBtn");
+  const aiBtnText = document.getElementById("aiBtnText");
+  
+  // Si el usuario es FREE, redirigir a la página de suscripción
+  if (userPlan === "free") {
+    chrome.tabs.create({ url: "https://chenuke.com/#planes" });
+    return;
+  }
+
+  // Mostrar estado de carga
+  const originalText = aiBtnText.textContent;
+  aiBtnText.textContent = "⏳ Generando informe...";
+  aiBtn.disabled = true;
+
+  try {
+    // Obtener la pestaña actual y extraer texto
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    
+    // Extraer contenido de la página
+    const extracted = await extractPageContent(tab);
+    
+    if (!extracted || !extracted.ok || !extracted.text) {
+      showError("No se pudo extraer el contenido de la página");
+      return;
+    }
+
+    // Llamar al nuevo endpoint de chat
+    const response = await fetchWithTimeout(CHAT_API_URL, {
+      method: "POST",
+      headers: await buildHeaders(),
+      body: JSON.stringify({
+        text: extracted.text,
+        title: extracted.title || tab.title || "",
+        url: extracted.url || tab.url,
+        heuristic: lastResult // pasamos el análisis heurístico para enriquecer el prompt
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || `Error ${response.status}`);
+    }
+
+    const data = await response.json();
+    showAIReport(data.report, data.model);
+
+  } catch (err) {
+    console.error("❌ Error en análisis IA:", err);
+    showError(`Error generando informe: ${err.message}`);
+  } finally {
+    aiBtnText.textContent = originalText;
+    aiBtn.disabled = false;
+  }
+}
+
+function showAIReport(report, model) {
+  // Guardar el informe en localStorage para la página web
+  const encoded = encodeURIComponent(report);
+  const url = `https://chenuke.com/ia-report.html?report=${encoded}`;
+  chrome.tabs.create({ url });
+}
+
+// ======================================================
+// FUNCIONES EXISTENTES (continuación)
+// ======================================================
+
 document.addEventListener("DOMContentLoaded", () => {
   const analyzeBtn = document.getElementById("analyzeBtn");
   const clearCacheBtn = document.getElementById("clearCacheBtn");
@@ -150,6 +247,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const errorMessage = document.getElementById("errorMessage");
   const retryErrorBtn = document.getElementById("retryErrorBtn");
 
+  // Nuevo botón IA
+  const aiAnalyzeBtn = document.getElementById("aiAnalyzeBtn");
+  if (aiAnalyzeBtn) {
+    aiAnalyzeBtn.addEventListener("click", runAIAnalysis);
+  }
+
   function showError(message) {
     if (labelBadge) {
       labelBadge.textContent = message;
@@ -165,6 +268,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     if (cacheBadge) cacheBadge.classList.add("hidden");
     if (clearCacheBtn) clearCacheBtn.classList.add("hidden");
+    // Actualizar botón IA a FREE
+    updateAIButton("free");
   }
 
   function hideError() {
@@ -315,7 +420,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!force) {
         const cached = await getCachedResult(tab.url);
         if (cached) {
-          renderResult(cached, true); // true = fromCache
+          renderResult(cached, true);
           stopScanUI();
           return;
         }
@@ -361,7 +466,6 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderResult(data, fromCache = false) {
     hideError();
 
-    // Mostrar badge de caché si corresponde
     if (fromCache && cacheBadge) {
       cacheBadge.classList.remove("hidden");
       if (clearCacheBtn) clearCacheBtn.classList.remove("hidden");
@@ -395,6 +499,9 @@ document.addEventListener("DOMContentLoaded", () => {
       if (proWarning) proWarning.style.display = "none";
       if (upgradeBtn) upgradeBtn.style.display = "none";
       if (proMetrics) proMetrics.classList.add("hidden");
+      // Actualizar botón IA
+      const userPlan = data?.meta?.plan || "free";
+      updateAIButton(userPlan);
       return;
     }
 
@@ -414,6 +521,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (proWarning) proWarning.style.display = "none";
       if (upgradeBtn) upgradeBtn.style.display = "none";
       if (proMetrics) proMetrics.classList.add("hidden");
+      const userPlan = data?.meta?.plan || "free";
+      updateAIButton(userPlan);
       return;
     }
 
@@ -433,6 +542,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (proWarning) proWarning.style.display = "none";
       if (upgradeBtn) upgradeBtn.style.display = "none";
       if (proMetrics) proMetrics.classList.add("hidden");
+      const userPlan = data?.meta?.plan || "free";
+      updateAIButton(userPlan);
       return;
     }
 
@@ -467,14 +578,13 @@ document.addEventListener("DOMContentLoaded", () => {
         score = 0;
     }
 
-    // 🛑 Variable única para el plan (oculta el número en FREE)
-    const plan = data?.meta?.plan || "free"; 
+    const userPlan = data?.meta?.plan || "free";
 
     if (scoreEl) {
-        if (plan === "free") {
-            scoreEl.textContent = "—"; // Usuario FREE solo ve un guion
+        if (userPlan === "free") {
+            scoreEl.textContent = "—";
         } else {
-            scoreEl.textContent = score; // Usuario PRO/PREMIUM ve el número real
+            scoreEl.textContent = score;
         }
     }
 
@@ -494,9 +604,6 @@ document.addEventListener("DOMContentLoaded", () => {
       summaryBox.textContent = analysis.insight || analysis.message || "El contenido no presenta señales relevantes de manipulación o riesgo.";
       summaryBox.classList.remove("hidden");
     }
-
-    // ✅ CAMBIO DEFINITIVO: Cambiamos el nombre a 'userPlan' para evitar conflicto con la variable de arriba
-    const userPlan = data?.meta?.plan || "free";
 
     if (userPlan === "free") {
       if (proSection) proSection.classList.add("locked");
@@ -536,9 +643,12 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
     }
+
+    // Actualizar botón de IA según el plan
+    updateAIButton(userPlan);
   }
 
-  // --- EVENT LISTENERS ---
+  // --- EVENT LISTENERS (existentes) ---
 
   if (upgradeBtn) {
     upgradeBtn.addEventListener("click", () => {
@@ -571,7 +681,6 @@ document.addEventListener("DOMContentLoaded", () => {
           await chrome.storage.local.remove("chenuke_last_result");
           if (cacheBadge) cacheBadge.classList.add("hidden");
           if (clearCacheBtn) clearCacheBtn.classList.add("hidden");
-          // Re-analizar automáticamente
           runAnalysis({ force: true });
         }
       } catch (e) {

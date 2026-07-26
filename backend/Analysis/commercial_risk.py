@@ -1,6 +1,6 @@
 """commercial_risk — Riesgo comercial, financiero y landings de captación.
 
-Chenuke v15.21
+Chenuke v15.24
 
 Detecta:
 - e-commerce clásico
@@ -11,6 +11,7 @@ Detecta:
 - porcentajes exagerados
 - presión comercial
 - ausencia de información legal
+- estafas cripto y cursos milagrosos
 """
 
 from __future__ import annotations
@@ -162,7 +163,7 @@ ECOMMERCE_URL_SIGNALS: Final[tuple[str, ...]] = (
 
 
 # ======================================================
-# FINANZAS / TRADING / GANANCIAS
+# FINANZAS / TRADING / GANANCIAS (ampliado)
 # ======================================================
 
 FINANCIAL_TEXT_SIGNALS: Final[tuple[str, ...]] = (
@@ -175,6 +176,10 @@ FINANCIAL_TEXT_SIGNALS: Final[tuple[str, ...]] = (
     "cripto",
     "criptomonedas",
     "bitcoin",
+    "ethereum",
+    "usdt",
+    "binance",
+    "coinbase",
     "inversión",
     "inversion",
     "invertir",
@@ -196,6 +201,12 @@ FINANCIAL_TEXT_SIGNALS: Final[tuple[str, ...]] = (
     "aprende trading",
     "dominar tu mente",
     "no operes solo",
+    "señales de trading",
+    "trading automatizado",
+    "bot de trading",
+    "ganancias diarias",
+    "retorno garantizado",
+    "inversión segura",
 )
 
 FINANCIAL_URL_SIGNALS: Final[tuple[str, ...]] = (
@@ -243,14 +254,17 @@ FORM_PATTERNS: Final[tuple[str, ...]] = (
 
 
 # ======================================================
-# REGEX
+# REGEX (ampliados)
 # ======================================================
 
 _GENERIC_REVIEWS_RE = re.compile(
     r"\d{3,} reviews"
     r"|\d{3,} opiniones"
     r"|\d{1,3},\d{3}\s*(?:task\s*)?reviews"
-    r"|\d{1,3},\d{3}",
+    r"|\d{1,3},\d{3}"
+    r"|\d+\s+(?:clientes|usuarios|personas)\s+(?:satisfechas|contentas)\s+(?:ya\s+)?(?:compraron|confían)"
+    r"|testimonios\s+reales\s+de\s+clientes"
+    r"|casos\s+de\s+éxito\s+(?:reales|comprobados)",
     re.IGNORECASE,
 )
 
@@ -277,7 +291,10 @@ FAST_MONEY_RE = re.compile(
     r"|segundo\s+ingreso"
     r"|ingresos\s+ilimitados"
     r"|sin\s+experiencia"
-    r"|sin\s+entrevista",
+    r"|sin\s+entrevista"
+    r"|ganancias\s+(?:diarias|semanales)\s+(?:garantizadas|aseguradas)"
+    r"|(?:multiplica|duplica|triplica)\s+tu\s+(?:dinero|inversión)"
+    r"|(?:sistema\s+automático|bot)\s+(?:de\s+trading|de\s+inversión)",
     re.IGNORECASE,
 )
 
@@ -287,7 +304,18 @@ GUARANTEE_RE = re.compile(
     r"|riesgo cero"
     r"|rentabilidad asegurada"
     r"|ganancias aseguradas"
-    r"|resultados asegurados",
+    r"|resultados asegurados"
+    r"|retorno\s+garantizado",
+    re.IGNORECASE,
+)
+
+# Nuevo: patrones de escasez artificial
+SCARCITY_RE = re.compile(
+    r"solo\s+quedan\s+\d+\s+(?:unidades|cupos|lugares)"
+    r"|oferta\s+limitada\s+(?:a\s+las\s+\d+|hasta\s+agotar\s+stock)"
+    r"|(?:stock|cupos)\s+limitados"
+    r"|(?:última|últimas)\s+(?:oportunidad|chance|chances?)"
+    r"|no\s+te\s+lo\s+pierdas",
     re.IGNORECASE,
 )
 
@@ -483,6 +511,17 @@ def analyze_commercial_risk(
         _add_signal(
             signals,
             "Formulario de captación de datos personales"
+        )
+
+    # ==================================================
+    # Escasez artificial (nuevo)
+    # ==================================================
+
+    if SCARCITY_RE.search(t):
+        risk += 2.5
+        _add_signal(
+            signals,
+            "Lenguaje de escasez artificial o urgencia comercial"
         )
 
     # ==================================================

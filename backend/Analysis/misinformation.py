@@ -4,6 +4,8 @@ afirmaciones categóricas sin respaldo.
 Principio: una acusación de fraude/corrupción sin atribución concreta es
 la señal más fuerte de desinformación. Pero el check de atribución debe ser
 ESTRICTO (no basta una mención casual de "según" en cualquier parte).
+
+v15.24: añadidos patrones de conspiraciones modernas (big pharma, élite global, etc.)
 """
 
 from __future__ import annotations
@@ -23,8 +25,17 @@ _SERIOUS_CLAIM_RE: Final[list[re.Pattern]] = [
 
 _CONSPIRACY_RE: Final[list[re.Pattern]] = [
     re.compile(p, re.IGNORECASE) for p in (
+        # Existentes
         r"no quieren que sepas", r"te están ocultando",
         r"nadie habla de", r"verdad oculta",
+        # Nuevos patrones de conspiraciones modernas
+        r"esto\s+no\s+lo\s+verás\s+en\s+los\s+medios",
+        r"la\s+verdad\s+que\s+te\s+ocultan",
+        r"los\s+gobiernos\s+no\s+quieren\s+que\s+sepas",
+        r"big\s+pharma\s+(?:no\s+quiere|te\s+oculta)",
+        r"élite\s+global",
+        r"nuevo\s+orden\s+mundial",
+        r"plan\s+globalista",
     )
 ]
 
@@ -34,12 +45,7 @@ _CATEGORICAL_RE: Final[list[re.Pattern]] = [
     )
 ]
 
-# FIX: atribución ESTRICTA. Antes "según" y "dijo" bastaban para desactivar
-# la detección de acusación grave — palabras demasiado comunes que un scam
-# incluye casualmente. Ahora se exige una atribución CONCRETA (verbo de
-# declaración + nombre/cita), no una mención genérica.
-#
-# Patrón: "según [nombre]", "informó [nombre]", "declaró que", etc.
+# Atribución ESTRICTA (nombre/cita concreta)
 _STRICT_ATTRIBUTION_RE: Final[list[re.Pattern]] = [
     re.compile(p, re.IGNORECASE) for p in (
         r"\bsegún\s+\w{3,}",           # "según el ministro" (no solo "según")
@@ -72,10 +78,11 @@ def check_misinformation(text: str) -> RuleResult:
         result.evidence.append(f"Acusación grave sin fuente: {', '.join(serious_found)}")
 
     # 2) Lenguaje conspirativo
-    if any(p.search(t) for p in _CONSPIRACY_RE):
+    conspiracy_matches = [p.pattern for p in _CONSPIRACY_RE if p.search(t)]
+    if conspiracy_matches:
         result.points += SCORE_CONSPIRACY
         result.reasons.append("conspiracy_language")
-        result.evidence.append("Lenguaje conspirativo detectado")
+        result.evidence.append(f"Lenguaje conspirativo: {', '.join(conspiracy_matches[:3])}")
 
     # 3) Afirmaciones categóricas
     if any(p.search(t) for p in _CATEGORICAL_RE):

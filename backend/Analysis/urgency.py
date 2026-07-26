@@ -1,4 +1,9 @@
-"""urgency — Detección de presión de urgencia artificial."""
+"""urgency — Detección de presión de urgencia artificial.
+
+Chenuke v15.24
+- Frases de presión temporal
+- Escasez artificial (stock limitado, cupos)
+"""
 
 from __future__ import annotations
 
@@ -17,13 +22,16 @@ _URGENCY_PHRASE_RE: Final[list[re.Pattern]] = [
         r"última oportunidad", r"actu[aá] ahora",
         r"antes (?:de )?que lo borren", r"solo\s+por\s+hoy",
         r"tiempo\s+limitado", r"decisión\s+inmediata",
+        # Nuevas frases de escasez
+        r"solo\s+quedan\s+\d+\s+(?:unidades|cupos|lugares)",
+        r"oferta\s+limitada\s+(?:a\s+las\s+\d+|hasta\s+agotar\s+stock)",
+        r"(?:stock|cupos)\s+limitados",
+        r"(?:última|últimas)\s+(?:oportunidad|chance|chances?)",
+        r"no\s+te\s+lo\s+pierdas",
     )
 ]
 
-# FIX: "ahora", "ya", "oferta" como substrings libres generaban falsos
-# positivos masivos. "Ya llegamos", "la oferta del super", "rápido y
-# furioso" disparaban el módulo. Ahora se usan frases con contexto o
-# word boundaries estrictos.
+# Palabras/tokens de urgencia con contexto (ahora más restrictivo)
 _URGENCY_TOKEN_RE: Final[list[re.Pattern]] = [
     re.compile(p, re.IGNORECASE) for p in (
         r"\burgente\b",
@@ -33,6 +41,8 @@ _URGENCY_TOKEN_RE: Final[list[re.Pattern]] = [
         r"\bgan[eaá]\s+(?:ya|ahora|hoy)\b",
         r"\bno\s+(?:pierdas|pierde|pierdan)\b",
         r"\baprovech[aeá]\b",
+        r"\bantes\s+de\s+que\s+termine\b",
+        r"\bno\s+te\s+quedes\s+sin\s+tu\s+(?:cupo|lugar|unidad)\b",
     )
 ]
 
