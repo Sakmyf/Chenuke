@@ -592,6 +592,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
         }
 
+        // Obtener score de la respuesta
         let score = analysis.structural_index ?? analysis.score ?? 0;
         if (typeof score === "number") {
             if (score <= 1) {
@@ -605,6 +606,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const userPlan = data?.meta?.plan || extensionPlan || "free";
 
+        // Mostrar el score en el popup (solo para PRO/PREMIUM)
         if (scoreEl) {
             if (userPlan === "free") {
                 scoreEl.textContent = "—";
@@ -613,6 +615,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
         }
 
+        // Mostrar confianza
         let conf = analysis.confidence ?? 0;
         if (typeof conf === "number") {
             if (conf <= 1) {
@@ -625,18 +628,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         if (confEl) confEl.textContent = conf;
 
+        // Mostrar insight
         if (summaryBox) {
             summaryBox.textContent = analysis.insight || analysis.message || "El contenido no presenta señales relevantes de manipulación o riesgo.";
             summaryBox.classList.remove("hidden");
         }
 
         // ============================================================
-        // MANEJO DEL BOTÓN "VER ANÁLISIS COMPLETO" (CORREGIDO)
+        // MANEJO DEL BOTÓN "VER ANÁLISIS COMPLETO"
         // ============================================================
         if (userPlan === "free") {
             if (proSection) proSection.classList.add("locked");
             if (proWarning) proWarning.style.display = "flex";
-            // Ocultar el botón "Ver análisis completo" para FREE
+            // Ocultar el botón para FREE (no debería aparecer)
             if (upgradeBtn) {
                 upgradeBtn.style.display = "none";
             }
@@ -683,39 +687,68 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     // ============================================================
-    // EVENT LISTENER DEL BOTÓN "VER ANÁLISIS COMPLETO" (CORREGIDO)
+    // EVENT LISTENER DEL BOTÓN "VER ANÁLISIS COMPLETO" (MEJORADO)
     // ============================================================
     if (upgradeBtn) {
         upgradeBtn.addEventListener("click", () => {
+            // 1. Verificar que el usuario sea PRO/PREMIUM
             const userPlan = lastResult?.meta?.plan || extensionPlan || "free";
             if (userPlan === "free") {
-                // Si por algún motivo el botón se muestra en FREE, redirigir a suscripción
                 chrome.tabs.create({ url: "https://chenuke.com/#planes" });
                 return;
             }
-            const raw = lastResult?.analysis || lastResult || {};
-            // 🔥 CORRECCIÓN: usar structural_index como prioridad, luego score
-            let score = raw.structural_index ?? raw.score ?? null;
-            // Si score es null o undefined, no abrir la página
-            if (score === null || score === undefined) {
-                chrome.tabs.create({ url: "https://chenuke.com/#planes" });
-                return;
-            }
-            // Asegurar que score sea un número entero entre 0 y 100
-            if (typeof score === "number") {
-                if (score <= 1) {
-                    score = Math.round(score * 100);
-                } else {
-                    score = Math.min(Math.round(score), 100);
+
+            // 2. Intentar obtener el score desde la UI (scoreValue) – es la fuente más confiable
+            let score = null;
+            const scoreEl = document.getElementById("scoreValue");
+            if (scoreEl) {
+                const scoreText = scoreEl.textContent.trim();
+                if (scoreText !== "—" && scoreText !== "" && !isNaN(parseInt(scoreText, 10))) {
+                    score = parseInt(scoreText, 10);
                 }
-            } else {
-                score = 0;
             }
+
+            // 3. Si no se obtuvo desde la UI, usar lastResult
+            if (score === null || score === undefined) {
+                const raw = lastResult?.analysis || lastResult || {};
+                score = raw.structural_index ?? raw.score ?? null;
+                if (typeof score === "number") {
+                    if (score <= 1) {
+                        score = Math.round(score * 100);
+                    } else {
+                        score = Math.round(score);
+                    }
+                }
+            }
+
+            // 4. Si aún no hay score, redirigir a la landing (fallback seguro)
+            if (score === null || score === undefined || isNaN(score)) {
+                chrome.tabs.create({ url: "https://chenuke.com/#planes" });
+                return;
+            }
+
+            // 5. Asegurar que score esté entre 0 y 100
+            score = Math.min(Math.max(score, 0), 100);
+
+            // 6. Obtener level y confianza
+            const raw = lastResult?.analysis || lastResult || {};
             const level = (raw.level ?? "").toLowerCase();
             let conf = raw.confidence != null
                 ? Math.round(raw.confidence <= 1 ? raw.confidence * 100 : raw.confidence)
                 : "";
-            // 🔥 SIEMPRE construir la URL con los parámetros (incluso si score es 0)
+
+            // 7. Guardar el análisis en localStorage antes de abrir la página
+            try {
+                localStorage.setItem('chenuke_last_analysis', JSON.stringify({
+                    score: score,
+                    level: level,
+                    confidence: conf
+                }));
+            } catch (e) {
+                // Ignorar errores de localStorage (puede estar deshabilitado)
+            }
+
+            // 8. Construir y abrir la URL
             const url = `${PRO_URL}?score=${score}&level=${level}&conf=${conf}`;
             chrome.tabs.create({ url });
         });
