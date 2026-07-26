@@ -52,13 +52,6 @@ class AnalysisLog(Base):
     response_json = Column(Text, nullable=True)
 
     # --- Columnas deprecadas (no las usa el engine actual) ---
-    # Se mantienen por compatibilidad con DBs existentes.
-    # Migración pendiente para eliminarlas:
-    #   ALTER TABLE analysis_logs DROP COLUMN trust_score;
-    #   ALTER TABLE analysis_logs DROP COLUMN rhetorical_score;
-    #   ALTER TABLE analysis_logs DROP COLUMN narrative_score;
-    #   ALTER TABLE analysis_logs DROP COLUMN absence_score;
-    #   ALTER TABLE analysis_logs DROP COLUMN premium_requested;
     trust_score = Column(Float, nullable=True)
     rhetorical_score = Column(Float, nullable=True)
     narrative_score = Column(Float, nullable=True)
@@ -73,7 +66,7 @@ class AnalysisLog(Base):
 
 
 # ---------------------------------------------------------------------------
-# Extension
+# Extension (mejorado)
 # ---------------------------------------------------------------------------
 
 class Extension(Base):
@@ -83,6 +76,7 @@ class Extension(Base):
     extension_id = Column(String(255), unique=True, index=True, nullable=False)
     is_active = Column(Boolean, default=True)
     plan = Column(String(20), default="free")
+    pro_token = Column(String(64), nullable=True, unique=True)  # 👈 NUEVO
     analyses_used = Column(Integer, default=0)
     analyses_limit = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), default=_utcnow)

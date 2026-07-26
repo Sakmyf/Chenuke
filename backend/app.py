@@ -4,6 +4,7 @@ import time
 import json
 import logging
 import asyncio
+import secrets
 from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Optional, Dict, Any
@@ -57,7 +58,6 @@ logger.setLevel(os.getenv("LOG_LEVEL", "INFO"))
 # ============================================================
 ENGINE_VERSION = "15.24-pro-full"
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
-PRO_TOKEN_SECRET = os.getenv("PRO_TOKEN_SECRET", "")
 DEMO_KEY = os.getenv("DEMO_KEY", "")
 DEV_MODE = os.getenv("DEV_MODE", "true").lower() == "true"
 
@@ -134,12 +134,13 @@ except Exception:
 
 try:
     from backend.database import SessionLocal
-    from backend.models import AnalysisLog
+    from backend.models import AnalysisLog, Extension
     DB_AVAILABLE = True
 except Exception:
     DB_AVAILABLE = False
     SessionLocal = None
     AnalysisLog = None
+    Extension = None
 
 # ============================================================
 # CACHÉ LOCAL (LRU en memoria)
@@ -273,11 +274,9 @@ _key_locks_mutex = asyncio.Lock()
 # ============================================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     await init_redis()
     logger.info("Chenuke API iniciada", extra={"extra": {"version": ENGINE_VERSION, "dev_mode": DEV_MODE}})
     yield
-    # Shutdown
     if redis_client:
         await redis_client.close()
     _executor.shutdown(wait=True)
@@ -293,10 +292,48 @@ def generate_analysis_key(url: str, text: str) -> str:
     base = f"{url}|{content_hash}|{ENGINE_VERSION}"
     return hashlib.sha256(base.encode()).hexdigest()
 
-def resolve_plan(request: Request) -> str:
-    token = request.headers.get("x-pro-token", "")
-    return "pro" if PRO_TOKEN_SECRET and token == PRO_TOKEN_SECRET else "free"
+# ----- NUEVO: Resolver plan desde DB -----
+async def resolve_plan_from_db(extension_id: str, pro_token: str) -> tuple[str, Optional[Extension]]:
+    """
+    Devuelve (plan, objeto_extension) verificando token.
+    Si no existe la extensión, la crea con plan 'free'.
+    """
+    if not DB_AVAILABLE or Extension is None:
+        return "free", None
 
+    db = SessionLocal()
+    try:
+        ext = db.query(Extension).filter(Extension.extension_id == extension_id).first()
+        if not ext:
+            # Crear nueva extensión automáticamente
+            ext = Extension(extension_id=extension_id, plan="free", pro_token=None)
+            db.add(ext)
+            db.commit()
+            db.refresh(ext)
+            return "free", ext
+
+        # Si tiene token, verificarlo
+        if ext.plan in ("pro", "premium"):
+            if not pro_token or pro_token != ext.pro_token:
+                # Token inválido → se degrada a free
+                ext.plan = "free"
+                ext.pro_token = None
+                db.commit()
+                return "free", ext
+            return ext.plan, ext
+        else:
+            return "free", ext
+    except Exception as e:
+        logger.error(f"Error en resolve_plan_from_db: {e}")
+        return "free", None
+    finally:
+        db.close()
+
+# ----- NUEVO: Generar token para extensión -----
+def generate_pro_token() -> str:
+    return secrets.token_urlsafe(32)  # 43 caracteres
+
+# ----- Helper: strip_for_plan -----
 def strip_for_plan(response: dict, plan: str) -> dict:
     out = json.loads(json.dumps(response))
     out["meta"]["plan"] = plan
@@ -305,6 +342,7 @@ def strip_for_plan(response: dict, plan: str) -> dict:
         out["analysis"]["metrics"] = None
     return out
 
+# ----- Helper: build_response -----
 def build_response(result: dict, analysis_key: str, plan: str, cached: bool = False):
     raw_score = result.get("score", 0)
     analysis_data = {
@@ -330,16 +368,13 @@ def build_response(result: dict, analysis_key: str, plan: str, cached: bool = Fa
     }
 
 async def get_cached_result(analysis_key: str) -> Optional[Dict]:
-    # 1. Memoria local
     cached = await get_local_cache(analysis_key)
     if cached:
         return cached
-    # 2. Redis
     cached = await get_redis_cache(analysis_key)
     if cached:
         await set_local_cache(analysis_key, cached)
         return cached
-    # 3. Base de datos
     loop = asyncio.get_event_loop()
     cached = await loop.run_in_executor(_executor, _cache_lookup_db, analysis_key)
     if cached:
@@ -355,7 +390,7 @@ async def save_cached_result(analysis_key: str, data: Dict, level: str, ri):
     await loop.run_in_executor(_executor, _cache_save_db, analysis_key, data, level, ri)
 
 # ============================================================
-# MODELS
+# MODELS (Pydantic)
 # ============================================================
 class VerifyRequest(BaseModel):
     url: str
@@ -372,9 +407,87 @@ class ChatAnalysisRequest(BaseModel):
     url: str = ""
     heuristic: dict = {}
 
+class RegisterRequest(BaseModel):
+    extension_id: str
+
+class UpgradeRequest(BaseModel):
+    extension_id: str
+    plan: str = "pro"
+    analyses_limit: Optional[int] = None
+
 # ============================================================
-# ROUTES
+# NUEVOS ENDPOINTS DE SEGURIDAD
 # ============================================================
+
+@app.post("/v3/register")
+async def register_extension(req: RegisterRequest):
+    """
+    Registra (o actualiza) la extensión y devuelve su plan y token (si existe).
+    """
+    ext_id = req.extension_id.strip()
+    if not ext_id:
+        raise HTTPException(400, "extension_id requerido")
+
+    if not DB_AVAILABLE or Extension is None:
+        return {"status": "ok", "plan": "free", "pro_token": None}
+
+    db = SessionLocal()
+    try:
+        ext = db.query(Extension).filter(Extension.extension_id == ext_id).first()
+        if not ext:
+            ext = Extension(extension_id=ext_id, plan="free", pro_token=None)
+            db.add(ext)
+            db.commit()
+            db.refresh(ext)
+        return {
+            "status": "ok",
+            "plan": ext.plan,
+            "pro_token": ext.pro_token,
+            "analyses_limit": ext.analyses_limit
+        }
+    finally:
+        db.close()
+
+@app.post("/v3/upgrade")
+async def upgrade_extension(req: UpgradeRequest):
+    """
+    Actualiza el plan y genera token para una extensión (llamado desde webhook de pago).
+    """
+    ext_id = req.extension_id.strip()
+    if not ext_id:
+        raise HTTPException(400, "extension_id requerido")
+
+    if not DB_AVAILABLE or Extension is None:
+        raise HTTPException(503, "Base de datos no disponible")
+
+    db = SessionLocal()
+    try:
+        ext = db.query(Extension).filter(Extension.extension_id == ext_id).first()
+        if not ext:
+            raise HTTPException(404, "Extensión no encontrada")
+
+        ext.plan = req.plan
+        if req.analyses_limit is not None:
+            ext.analyses_limit = req.analyses_limit
+        # Generar token si no existe
+        if not ext.pro_token:
+            ext.pro_token = generate_pro_token()
+        db.commit()
+        db.refresh(ext)
+
+        return {
+            "status": "ok",
+            "plan": ext.plan,
+            "pro_token": ext.pro_token,
+            "analyses_limit": ext.analyses_limit
+        }
+    finally:
+        db.close()
+
+# ============================================================
+# ENDPOINTS EXISTENTES (MODIFICADOS)
+# ============================================================
+
 @app.get("/")
 def root():
     return {
@@ -423,13 +536,24 @@ async def health():
 @limiter.limit(VERIFY_RATE_LIMIT)
 async def verify(req: VerifyRequest, request: Request):
     start_time = time.time()
-    plan = resolve_plan(request)
 
-    if not request.headers.get("x-extension-id"):
-        raise HTTPException(status_code=401, detail="Extensión no autorizada")
-    if len(req.text) > 20_000:
-        raise HTTPException(status_code=400, detail="Texto demasiado largo")
+    # --- Verificar extensión y token ---
+    ext_id = request.headers.get("x-extension-id", "").strip()
+    if not ext_id:
+        raise HTTPException(401, "x-extension-id requerido")
 
+    pro_token = request.headers.get("x-pro-token", "").strip()
+
+    # Obtener plan desde DB
+    plan, ext = await resolve_plan_from_db(ext_id, pro_token)
+    if ext is None:
+        plan = "free"
+
+    # Restricciones para textos largos según plan
+    if plan == "free" and len(req.text) > 20_000:
+        raise HTTPException(400, "Texto demasiado largo para plan gratuito (máx 20.000 caracteres)")
+
+    # Filtro de contenido explícito
     if is_explicit_content(req.url, req.title, req.text):
         return {
             "status": "skipped",
@@ -594,25 +718,31 @@ async def chat_analysis(req: ChatAnalysisRequest, request: Request):
     Endpoint exclusivo para PRO/PREMIUM.
     Genera un informe en lenguaje natural usando DeepSeek.
     """
-    # 1. Verificar plan
-    plan = resolve_plan(request)
+
+    ext_id = request.headers.get("x-extension-id", "").strip()
+    if not ext_id:
+        raise HTTPException(401, "x-extension-id requerido")
+
+    pro_token = request.headers.get("x-pro-token", "").strip()
+
+    plan, ext = await resolve_plan_from_db(ext_id, pro_token)
+    if ext is None:
+        plan = "free"
+
     if plan not in ("pro", "premium"):
         raise HTTPException(
             status_code=403,
             detail="Esta función requiere una suscripción PRO o PREMIUM"
         )
 
-    # 2. Validar texto
     text = (req.text or "").strip()
     if len(text) < 80:
         raise HTTPException(400, "Texto insuficiente (mínimo 80 caracteres)")
 
-    # 3. Verificar que DeepSeek esté disponible
     if DEEPSEEK_CLIENT is None:
         logger.error("DeepSeek no disponible")
         raise HTTPException(503, "El servicio de inteligencia artificial no está disponible")
 
-    # 4. Generar clave de caché
     cache_key = hashlib.sha256((text + plan + req.title).encode()).hexdigest()
     if cache_key in _CHAT_CACHE:
         entry = _CHAT_CACHE[cache_key]
@@ -622,11 +752,9 @@ async def chat_analysis(req: ChatAnalysisRequest, request: Request):
         else:
             del _CHAT_CACHE[cache_key]
 
-    # 5. Elegir modelo según plan
     model = "deepseek-v4-pro" if plan == "premium" else "deepseek-v4-flash"
     logger.info(f"Generando informe con {model} para plan {plan}")
 
-    # 6. Construir prompt
     heuristic_summary = ""
     if req.heuristic:
         score = req.heuristic.get("score", "N/A")
@@ -680,7 +808,6 @@ Analiza el siguiente texto y genera un informe en lenguaje claro, directo y úti
 ¡Generá el informe ahora!
 """
 
-    # 7. Llamar a DeepSeek con timeout
     try:
         response = await asyncio.wait_for(
             asyncio.get_event_loop().run_in_executor(
@@ -700,7 +827,6 @@ Analiza el siguiente texto y genera un informe en lenguaje claro, directo y úti
 
         report_text = response.choices[0].message.content
 
-        # 8. Registrar uso
         logger.info(f"Informe generado para plan {plan}, modelo {model}, tokens: {response.usage.total_tokens}")
 
         response_data = {
@@ -715,7 +841,6 @@ Analiza el siguiente texto y genera un informe en lenguaje claro, directo y úti
             }
         }
 
-        # Guardar en caché
         _CHAT_CACHE[cache_key] = {
             "timestamp": time.time(),
             "data": response_data
