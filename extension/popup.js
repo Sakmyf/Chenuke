@@ -486,6 +486,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     }
 
+    // ============================================================
+    // RENDER RESULTADO (CORREGIDO)
+    // ============================================================
     function renderResult(data, fromCache = false) {
         hideError();
 
@@ -628,19 +631,20 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
 
         // ============================================================
-        // 🛠️ CORRECCIÓN: manejo del botón "Ver análisis completo"
+        // MANEJO DEL BOTÓN "VER ANÁLISIS COMPLETO" (CORREGIDO)
         // ============================================================
         if (userPlan === "free") {
             if (proSection) proSection.classList.add("locked");
             if (proWarning) proWarning.style.display = "flex";
+            // Ocultar el botón "Ver análisis completo" para FREE
             if (upgradeBtn) {
-                upgradeBtn.style.display = "block";
-                upgradeBtn.textContent = "🔓 Actualizar a PRO";
+                upgradeBtn.style.display = "none";
             }
             if (proMetrics) proMetrics.classList.add("hidden");
         } else {
             if (proSection) proSection.classList.remove("locked");
             if (proWarning) proWarning.style.display = "none";
+            // Mostrar el botón solo para PRO/PREMIUM
             if (upgradeBtn) {
                 upgradeBtn.style.display = "block";
                 upgradeBtn.textContent = "📊 Ver análisis completo";
@@ -679,29 +683,38 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     // ============================================================
-    // 🛠️ EVENT LISTENER CORREGIDO para upgradeBtn
+    // EVENT LISTENER DEL BOTÓN "VER ANÁLISIS COMPLETO" (CORREGIDO)
     // ============================================================
     if (upgradeBtn) {
         upgradeBtn.addEventListener("click", () => {
             const userPlan = lastResult?.meta?.plan || extensionPlan || "free";
-            
             if (userPlan === "free") {
+                // Si por algún motivo el botón se muestra en FREE, redirigir a suscripción
                 chrome.tabs.create({ url: "https://chenuke.com/#planes" });
                 return;
             }
-
             const raw = lastResult?.analysis || lastResult || {};
-            const score = raw.score ?? "";
+            // Intentar obtener score de structural_index o score
+            let score = raw.structural_index ?? raw.score ?? "";
+            if (typeof score === "number") {
+                if (score <= 1) score = Math.round(score * 100);
+                else score = Math.round(score);
+            }
             const level = (raw.level ?? "").toLowerCase();
-            const conf = raw.confidence != null
+            let conf = raw.confidence != null
                 ? Math.round(raw.confidence <= 1 ? raw.confidence * 100 : raw.confidence)
                 : "";
-            const url = score
-                ? `${PRO_URL}?score=${score}&level=${level}&conf=${conf}`
-                : PRO_URL;
+            // Si no hay score, no debería pasar, pero por si acaso redirigimos a la landing
+            if (!score) {
+                chrome.tabs.create({ url: "https://chenuke.com/#planes" });
+                return;
+            }
+            const url = `${PRO_URL}?score=${score}&level=${level}&conf=${conf}`;
             chrome.tabs.create({ url });
         });
     }
+
+    // --- OTROS EVENT LISTENERS ---
 
     if (analyzeBtn) {
         analyzeBtn.addEventListener("click", () => runAnalysis({ force: true }));
@@ -727,5 +740,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         });
     }
 
+    // Iniciar análisis al abrir el popup
     runAnalysis({ force: false });
 });
