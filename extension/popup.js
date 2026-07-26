@@ -694,21 +694,28 @@ document.addEventListener("DOMContentLoaded", async () => {
                 return;
             }
             const raw = lastResult?.analysis || lastResult || {};
-            // Intentar obtener score de structural_index o score
-            let score = raw.structural_index ?? raw.score ?? "";
+            // 🔥 CORRECCIÓN: usar structural_index como prioridad, luego score
+            let score = raw.structural_index ?? raw.score ?? null;
+            // Si score es null o undefined, no abrir la página
+            if (score === null || score === undefined) {
+                chrome.tabs.create({ url: "https://chenuke.com/#planes" });
+                return;
+            }
+            // Asegurar que score sea un número entero entre 0 y 100
             if (typeof score === "number") {
-                if (score <= 1) score = Math.round(score * 100);
-                else score = Math.round(score);
+                if (score <= 1) {
+                    score = Math.round(score * 100);
+                } else {
+                    score = Math.min(Math.round(score), 100);
+                }
+            } else {
+                score = 0;
             }
             const level = (raw.level ?? "").toLowerCase();
             let conf = raw.confidence != null
                 ? Math.round(raw.confidence <= 1 ? raw.confidence * 100 : raw.confidence)
                 : "";
-            // Si no hay score, no debería pasar, pero por si acaso redirigimos a la landing
-            if (!score) {
-                chrome.tabs.create({ url: "https://chenuke.com/#planes" });
-                return;
-            }
+            // 🔥 SIEMPRE construir la URL con los parámetros (incluso si score es 0)
             const url = `${PRO_URL}?score=${score}&level=${level}&conf=${conf}`;
             chrome.tabs.create({ url });
         });
