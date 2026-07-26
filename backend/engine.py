@@ -1,7 +1,7 @@
 import re
 import traceback
 from urllib.parse import urlparse
-from functools import partial  # 👈 IMPORTANTE: agregamos partial
+from functools import partial
 
 # Importaciones de los módulos de análisis
 from backend.Analysis.credibility import analyze as analyze_credibility
