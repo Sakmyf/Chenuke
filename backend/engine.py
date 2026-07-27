@@ -493,7 +493,7 @@ def analyze_context(
         weights = adjust_weights(BASE_WEIGHTS, context, source_info)
 
         # ============================================================
-        # CORRECCIÓN: Usamos partial para pasar los argumentos
+        # CORRECCIÓN DEFINITIVA: Usamos partial para pasar los argumentos
         # ============================================================
         futures = {}
 
