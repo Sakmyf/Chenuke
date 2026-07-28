@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Chenuke",
-  "version": "0.5.1",
+  "version": "0.5.0",
   "description": "Chenuke: Análisis estructural para detectar manipulación en contenido web y e-commerce. Optimiza ventas con métricas.",
   "author": "Chenuke Team",
   "homepage_url": "https://chenuke.com",
