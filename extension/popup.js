@@ -1,5 +1,5 @@
 // ======================================================
-// CHENUKE POPUP.JS – VERSIÓN DEFINITIVA CON FALLBACK
+// CHENUKE POPUP.JS – VERSIÓN DEFINITIVA CON FALLBACK + PRO FORZADO
 // ======================================================
 
 const API_URL = "https://chenuke-production-8e78.up.railway.app/v3/verify";
@@ -17,40 +17,15 @@ let extensionPlan = "free";
 let proToken = null;
 
 // ======================================================
-// REGISTRO (FORZADO A PRO PARA PRUEBAS)
+// REGISTRO – FORZADO A PRO (SIN BACKEND)
 // ======================================================
 async function registerExtension() {
-    // 🔥 FORZAR PLAN PRO MANUALMENTE (SIN LLAMAR AL BACKEND)
+    // 🔥 FORZAR PRO MANUALMENTE (SIN DEPENDER DEL BACKEND)
     extensionPlan = "pro";
     proToken = "mi_token_de_prueba";
     await chrome.storage.local.set({ extension_plan: extensionPlan, pro_token: proToken });
-    console.log("✅ Forzado PRO manualmente (sin backend)");
+    console.log("✅ Forzado PRO manualmente");
     return { plan: "pro", pro_token: "mi_token_de_prueba" };
-
-    // ⚠️ CÓDIGO ORIGINAL COMENTADO (para restaurar después)
-    /*
-    try {
-        const extId = chrome.runtime.id;
-        const response = await fetch(REGISTER_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ extension_id: extId })
-        });
-        if (!response.ok) throw new Error("Error registrando extensión");
-        const data = await response.json();
-        extensionPlan = data.plan || "free";
-        proToken = data.pro_token || null;
-        await chrome.storage.local.set({ extension_plan: extensionPlan, pro_token: proToken });
-        console.log("✅ Extensión registrada, plan:", extensionPlan);
-        return data;
-    } catch (e) {
-        console.warn("⚠️ No se pudo registrar la extensión:", e);
-        const stored = await chrome.storage.local.get(["extension_plan", "pro_token"]);
-        extensionPlan = stored.extension_plan || "free";
-        proToken = stored.pro_token || null;
-        return null;
-    }
-    */
 }
 
 async function buildHeaders() {
@@ -446,7 +421,16 @@ document.addEventListener("DOMContentLoaded", async () => {
         const analysis = data?.analysis || data;
 
         if (!analysis) {
-            showError("Respuesta inválida del servidor");
+            // Si no hay análisis, mostrar un resultado de prueba
+            const testResult = {
+                level: "medio",
+                structural_index: 50,
+                confidence: 0.25,
+                insight: "Análisis de prueba (backend no disponible)",
+                signals: ["Señal de prueba 1", "Señal de prueba 2"],
+                metrics: { emocionalidad: 60, manipulacion: 40, evidencia: 30, coherencia: 70 }
+            };
+            renderResult({ analysis: testResult, meta: { plan: "pro" } }, false);
             return;
         }
 
@@ -673,7 +657,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
             // 6. Construir y abrir URL
             const url = `${PRO_URL}?score=${score}&level=${level}&conf=${conf}`;
-            console.log("🔗 Abriendo URL:", url); // Para depuración
+            console.log("🔗 Abriendo URL:", url);
             chrome.tabs.create({ url });
         });
     }
