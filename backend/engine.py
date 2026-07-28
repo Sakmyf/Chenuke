@@ -493,25 +493,25 @@ def analyze_context(
         weights = adjust_weights(BASE_WEIGHTS, context, source_info)
 
         # ============================================================
-        # CORRECCIÓN DEFINITIVA: Usamos partial para pasar los argumentos
+        # CORRECCIÓN DE LLAMADAS ASÍNCRONAS EN EL EXECUTOR
         # ============================================================
-        futures = {}
-
-        futures["credibility"] = GLOBAL_EXECUTOR.submit(partial(analyze_credibility, text))
-        futures["contradictions"] = GLOBAL_EXECUTOR.submit(partial(analyze_contradictions, text))
-        futures["authority"] = GLOBAL_EXECUTOR.submit(partial(analyze_authority, text))
-        futures["urgency"] = GLOBAL_EXECUTOR.submit(partial(check_urgency, text))
-        futures["emotions"] = GLOBAL_EXECUTOR.submit(partial(check_emotions, text))
-        futures["polarization"] = GLOBAL_EXECUTOR.submit(partial(check_polarization, text))
-        futures["misinformation"] = GLOBAL_EXECUTOR.submit(partial(check_misinformation, text))
-        futures["scientific_claims"] = GLOBAL_EXECUTOR.submit(partial(check_scientific_claims, text))
-        futures["narrative_patterns"] = GLOBAL_EXECUTOR.submit(partial(analyze_narrative_patterns, text))
-        futures["hypothetical"] = GLOBAL_EXECUTOR.submit(partial(check_hypothetical, text))
-        futures["promises"] = GLOBAL_EXECUTOR.submit(partial(check_promises, text))
-        futures["uncertainty"] = GLOBAL_EXECUTOR.submit(partial(detect_uncertainty, text, title, context))
-        futures["structural"] = GLOBAL_EXECUTOR.submit(partial(check_structural, text))
-        futures["commercial_risk"] = GLOBAL_EXECUTOR.submit(partial(analyze_commercial_risk, text, url, context))
-        futures["logical_fallacies"] = GLOBAL_EXECUTOR.submit(partial(check_logical_fallacies, text))
+        futures = {
+            "credibility": GLOBAL_EXECUTOR.submit(analyze_credibility, text),
+            "contradictions": GLOBAL_EXECUTOR.submit(analyze_contradictions, text),
+            "authority": GLOBAL_EXECUTOR.submit(analyze_authority, text),
+            "urgency": GLOBAL_EXECUTOR.submit(check_urgency, text),
+            "emotions": GLOBAL_EXECUTOR.submit(check_emotions, text),
+            "polarization": GLOBAL_EXECUTOR.submit(check_polarization, text),
+            "misinformation": GLOBAL_EXECUTOR.submit(check_misinformation, text),
+            "scientific_claims": GLOBAL_EXECUTOR.submit(check_scientific_claims, text),
+            "narrative_patterns": GLOBAL_EXECUTOR.submit(analyze_narrative_patterns, text),
+            "hypothetical": GLOBAL_EXECUTOR.submit(check_hypothetical, text),
+            "promises": GLOBAL_EXECUTOR.submit(check_promises, text),
+            "uncertainty": GLOBAL_EXECUTOR.submit(detect_uncertainty, text, title, context),
+            "structural": GLOBAL_EXECUTOR.submit(check_structural, text),
+            "commercial_risk": GLOBAL_EXECUTOR.submit(analyze_commercial_risk, text, url, context),
+            "logical_fallacies": GLOBAL_EXECUTOR.submit(check_logical_fallacies, text),
+        }
 
         results = {}
 
