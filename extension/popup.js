@@ -1,5 +1,5 @@
 // ======================================================
-// CHENUKE POPUP.JS – VERSIÓN DEFINITIVA CON FALLBACK + PRO FORZADO
+// CHENUKE POPUP.JS – PRODUCTION READY + DEEPSEEK IA + SEGURIDAD
 // ======================================================
 
 const API_URL = "https://chenuke-production-8e78.up.railway.app/v3/verify";
@@ -17,16 +17,38 @@ let extensionPlan = "free";
 let proToken = null;
 
 // ======================================================
-// REGISTRO – FORZADO A PRO (SIN BACKEND)
+// REGISTRO DE EXTENSIÓN (al cargar el popup)
 // ======================================================
 async function registerExtension() {
-    // 🔥 FORZAR PRO MANUALMENTE (SIN DEPENDER DEL BACKEND)
-    extensionPlan = "pro";
-    proToken = "mi_token_de_prueba";
-    await chrome.storage.local.set({ extension_plan: extensionPlan, pro_token: proToken });
-    console.log("✅ Forzado PRO manualmente");
-    return { plan: "pro", pro_token: "mi_token_de_prueba" };
+    try {
+        const extId = chrome.runtime.id;
+        const response = await fetch(REGISTER_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ extension_id: extId })
+        });
+        if (!response.ok) throw new Error("Error registrando extensión");
+        const data = await response.json();
+        extensionPlan = data.plan || "free";
+        proToken = data.pro_token || null;
+        await chrome.storage.local.set({
+            extension_plan: extensionPlan,
+            pro_token: proToken
+        });
+        console.log("✅ Extensión registrada, plan:", extensionPlan, "token:", proToken ? "sí" : "no");
+        return data;
+    } catch (e) {
+        console.warn("⚠️ No se pudo registrar la extensión:", e);
+        const stored = await chrome.storage.local.get(["extension_plan", "pro_token"]);
+        extensionPlan = stored.extension_plan || "free";
+        proToken = stored.pro_token || null;
+        return null;
+    }
 }
+
+// ======================================================
+// FUNCIONES EXISTENTES
+// ======================================================
 
 async function buildHeaders() {
     const headers = {
@@ -34,11 +56,15 @@ async function buildHeaders() {
         "x-extension-id": chrome.runtime.id
     };
     const token = proToken || (await chrome.storage.local.get("pro_token")).pro_token || null;
-    if (token) headers["x-pro-token"] = token;
+    if (token) {
+        headers["x-pro-token"] = token;
+    }
     return headers;
 }
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function cleanTextForApi(text) {
     return String(text || "")
@@ -51,19 +77,32 @@ function cleanTextForApi(text) {
         .slice(0, 12000);
 }
 
-function getHttpErrorMessage(status) {
-    if (status === 429) return "Límite temporal alcanzado. Esperá unos segundos.";
-    if (status === 400) return "Solicitud inválida.";
-    if (status === 401 || status === 403) return "Acceso no autorizado.";
-    if (status === 404) return "Endpoint no encontrado.";
-    if (status >= 500) return "Error interno de la API.";
-    return `Error HTTP ${status}`;
+function getHttpErrorMessage(status, rawText = "") {
+    const cleanText = String(rawText || "").slice(0, 180);
+
+    if (status === 429) return "Límite temporal alcanzado. Esperá unos segundos y reintentá.";
+    if (status === 400) return "Solicitud inválida. La página envió contenido que la API no pudo procesar.";
+    if (status === 401 || status === 403) return "Acceso no autorizado. Revisá el token PRO o permisos de la extensión.";
+    if (status === 404) return "Endpoint no encontrado. Revisá la URL de la API en popup.js.";
+    if (status === 502 || status === 503 || status === 504) return "API temporalmente no disponible. Esperá unos segundos y reintentá.";
+    if (status >= 500) return "Error interno de la API. Revisá los deploy logs de Railway.";
+
+    return cleanText ? `Error HTTP ${status}: ${cleanText}` : `Error HTTP ${status}`;
 }
 
 function getUserErrorMessage(err) {
     const msg = String(err?.message || "");
+
     if (err?.name === "AbortError") return "Tiempo de espera agotado";
     if (msg.includes("Failed to fetch")) return "No se pudo conectar con la API";
+    if (msg.includes("Límite temporal")) return msg;
+    if (msg.includes("Endpoint no encontrado")) return msg;
+    if (msg.includes("API temporalmente")) return msg;
+    if (msg.includes("Error interno")) return msg;
+    if (msg.includes("Acceso no autorizado")) return msg;
+    if (msg.includes("Solicitud inválida")) return msg;
+    if (msg.includes("Texto insuficiente")) return msg;
+
     return msg || "Error de conexión";
 }
 
@@ -71,49 +110,69 @@ async function getCachedResult(url) {
     try {
         const stored = await chrome.storage.local.get("chenuke_last_result");
         const cached = stored?.chenuke_last_result;
+
         if (!cached || cached.url !== url) return null;
-        if (Date.now() - (cached.timestamp || 0) > CACHE_TTL) return null;
+
+        const age = Date.now() - (cached.timestamp || 0);
+        if (age > CACHE_TTL) return null;
+
         return cached.data || null;
-    } catch { return null; }
+    } catch (e) {
+        return null;
+    }
 }
 
 async function setCachedResult(url, data) {
     try {
         await chrome.storage.local.set({
-            chenuke_last_result: { url, data, timestamp: Date.now() }
+            chenuke_last_result: {
+                url,
+                data,
+                timestamp: Date.now()
+            }
         });
-    } catch {}
+    } catch (e) {}
 }
 
 function obtenerColorPorcentaje(valor, metrica) {
     const m = String(metrica || "").toLowerCase();
+
     if (m.includes("emocionalidad") || m.includes("emotionality")) {
         if (valor > 70) return "#ef4444";
         if (valor > 40) return "#facc15";
         return "#4ade80";
     }
-    if (m.includes("manipulación") || m.includes("manipulacion")) {
+
+    if (m.includes("manipulación") || m.includes("manipulacion") || m.includes("manipulation")) {
         if (valor > 70) return "#ef4444";
         if (valor > 40) return "#facc15";
         return "#4ade80";
     }
+
     if (m.includes("evidencia") || m.includes("evidence")) {
         if (valor < 40) return "#ef4444";
         if (valor < 70) return "#facc15";
         return "#4ade80";
     }
+
     if (m.includes("coherencia") || m.includes("coherence")) {
         if (valor < 40) return "#ef4444";
         if (valor < 70) return "#facc15";
         return "#4ade80";
     }
+
     return "#f1f5f9";
 }
+
+// ======================================================
+// ACTUALIZAR BOTÓN DE IA SEGÚN PLAN
+// ======================================================
 
 function updateAIButton(plan) {
     const aiBtnText = document.getElementById("aiBtnText");
     const aiBtn = document.getElementById("aiAnalyzeBtn");
     if (!aiBtnText || !aiBtn) return;
+
     if (plan === "pro" || plan === "premium") {
         aiBtnText.textContent = "🤖 Analizar con IA";
         aiBtn.disabled = false;
@@ -125,14 +184,20 @@ function updateAIButton(plan) {
     }
 }
 
+// ======================================================
+// ANÁLISIS CON IA (DEEPSEEK)
+// ======================================================
+
 async function runAIAnalysis() {
     const userPlan = lastResult?.meta?.plan || extensionPlan || "free";
+    const aiBtn = document.getElementById("aiAnalyzeBtn");
+    const aiBtnText = document.getElementById("aiBtnText");
+
     if (userPlan === "free") {
         chrome.tabs.create({ url: "https://chenuke.com/#planes" });
         return;
     }
-    const aiBtn = document.getElementById("aiAnalyzeBtn");
-    const aiBtnText = document.getElementById("aiBtnText");
+
     const originalText = aiBtnText.textContent;
     aiBtnText.textContent = "⏳ Generando informe...";
     aiBtn.disabled = true;
@@ -140,10 +205,12 @@ async function runAIAnalysis() {
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         const extracted = await extractPageContent(tab);
+
         if (!extracted || !extracted.ok || !extracted.text) {
             showError("No se pudo extraer el contenido de la página");
             return;
         }
+
         const response = await fetchWithTimeout(CHAT_API_URL, {
             method: "POST",
             headers: await buildHeaders(),
@@ -154,13 +221,15 @@ async function runAIAnalysis() {
                 heuristic: lastResult
             })
         });
+
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.detail || `Error ${response.status}`);
         }
+
         const data = await response.json();
-        const encoded = encodeURIComponent(data.report);
-        chrome.tabs.create({ url: `https://chenuke.com/ia-report.html?report=${encoded}` });
+        showAIReport(data.report, data.model);
+
     } catch (err) {
         console.error("❌ Error en análisis IA:", err);
         showError(`Error generando informe: ${err.message}`);
@@ -169,6 +238,16 @@ async function runAIAnalysis() {
         aiBtn.disabled = false;
     }
 }
+
+function showAIReport(report, model) {
+    const encoded = encodeURIComponent(report);
+    const url = `https://chenuke.com/ia-report.html?report=${encoded}`;
+    chrome.tabs.create({ url });
+}
+
+// ======================================================
+// FUNCIONES EXISTENTES (continuación)
+// ======================================================
 
 document.addEventListener("DOMContentLoaded", async () => {
     await registerExtension();
@@ -181,16 +260,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     const scoreEl = document.getElementById("scoreValue");
     const confEl = document.getElementById("confidenceValue");
     const cacheBadge = document.getElementById("cacheBadge");
+
     const upgradeBtn = document.getElementById("upgradeBtn");
     const proSection = document.getElementById("proSection");
     const proWarning = document.getElementById("proWarning");
     const proMetrics = document.getElementById("proMetrics");
     const proList = document.getElementById("proList");
+
     const errorBox = document.getElementById("errorBox");
     const errorMessage = document.getElementById("errorMessage");
     const retryErrorBtn = document.getElementById("retryErrorBtn");
-    const aiAnalyzeBtn = document.getElementById("aiAnalyzeBtn");
 
+    // Botón IA
+    const aiAnalyzeBtn = document.getElementById("aiAnalyzeBtn");
     if (aiAnalyzeBtn) {
         aiAnalyzeBtn.addEventListener("click", runAIAnalysis);
     }
@@ -301,11 +383,11 @@ document.addEventListener("DOMContentLoaded", async () => {
             const errorText = await res.text().catch(() => "");
             if (RETRY_HTTP_STATUS.includes(res.status) && attempt < MAX_RETRIES) {
                 const delay = Math.pow(2, attempt) * 1000;
-                console.log(`🔄 Reintento ${attempt + 1} en ${delay}ms...`);
+                console.log(`🔄 HTTP ${res.status}. Reintento ${attempt + 1} en ${delay}ms...`);
                 await sleep(delay);
                 return fetchAnalysis(safePayload, attempt + 1);
             }
-            const error = new Error(getHttpErrorMessage(res.status));
+            const error = new Error(getHttpErrorMessage(res.status, errorText));
             error.status = res.status;
             error.raw = errorText;
             throw error;
@@ -405,7 +487,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     // ============================================================
-    // RENDER RESULTADO
+    // RENDER RESULTADO (CORREGIDO)
     // ============================================================
     function renderResult(data, fromCache = false) {
         hideError();
@@ -510,25 +592,21 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
         }
 
-        // --- Obtener score real o estimado ---
+        // Obtener score de la respuesta
         let score = analysis.structural_index ?? analysis.score ?? 0;
         if (typeof score === "number") {
-            if (score <= 1) score = Math.round(score * 100);
-            else score = Math.min(Math.round(score), 100);
+            if (score <= 1) {
+                score = Math.round(score * 100);
+            } else {
+                score = Math.min(Math.round(score), 100);
+            }
         } else {
             score = 0;
         }
 
-        // 🔥 FALLBACK FORZADO: si no hay score, asignar según el nivel
-        if (score === 0) {
-            if (level === "bajo" || level === "green") score = 15;
-            else if (level === "medio" || level === "yellow") score = 50;
-            else if (level === "alto" || level === "red") score = 85;
-            else score = 30; // valor neutral
-        }
-
         const userPlan = data?.meta?.plan || extensionPlan || "free";
 
+        // Mostrar el score en el popup (solo para PRO/PREMIUM)
         if (scoreEl) {
             if (userPlan === "free") {
                 scoreEl.textContent = "—";
@@ -537,15 +615,20 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
         }
 
+        // Mostrar confianza
         let conf = analysis.confidence ?? 0;
         if (typeof conf === "number") {
-            if (conf <= 1) conf = Math.round(conf * 100);
-            else conf = Math.min(Math.round(conf), 100);
+            if (conf <= 1) {
+                conf = Math.round(conf * 100);
+            } else {
+                conf = Math.min(Math.round(conf), 100);
+            }
         } else {
             conf = 0;
         }
         if (confEl) confEl.textContent = conf;
 
+        // Mostrar insight
         if (summaryBox) {
             summaryBox.textContent = analysis.insight || analysis.message || "El contenido no presenta señales relevantes de manipulación o riesgo.";
             summaryBox.classList.remove("hidden");
@@ -557,11 +640,15 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (userPlan === "free") {
             if (proSection) proSection.classList.add("locked");
             if (proWarning) proWarning.style.display = "flex";
-            if (upgradeBtn) upgradeBtn.style.display = "none";
+            // Ocultar el botón para FREE (no debería aparecer)
+            if (upgradeBtn) {
+                upgradeBtn.style.display = "none";
+            }
             if (proMetrics) proMetrics.classList.add("hidden");
         } else {
             if (proSection) proSection.classList.remove("locked");
             if (proWarning) proWarning.style.display = "none";
+            // Mostrar el botón solo para PRO/PREMIUM
             if (upgradeBtn) {
                 upgradeBtn.style.display = "block";
                 upgradeBtn.textContent = "📊 Ver análisis completo";
@@ -600,66 +687,83 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     // ============================================================
-    // EVENT LISTENER DEL BOTÓN "VER ANÁLISIS COMPLETO" (FALLBACK)
+    // EVENT LISTENER DEL BOTÓN "VER ANÁLISIS COMPLETO" (MEJORADO)
     // ============================================================
     if (upgradeBtn) {
         upgradeBtn.addEventListener("click", () => {
+            // 1. Verificar que el usuario sea PRO/PREMIUM
             const userPlan = lastResult?.meta?.plan || extensionPlan || "free";
             if (userPlan === "free") {
                 chrome.tabs.create({ url: "https://chenuke.com/#planes" });
                 return;
             }
 
-            // Obtener datos del análisis
-            const raw = lastResult?.analysis || lastResult || {};
-            const level = (raw.level || "bajo").toLowerCase();
-
-            // 1. Intentar obtener score real
-            let score = raw.structural_index ?? raw.score ?? null;
-            if (typeof score === "number") {
-                if (score <= 1) score = Math.round(score * 100);
-                else score = Math.round(score);
+            // 2. Intentar obtener el score desde la UI (scoreValue) – es la fuente más confiable
+            let score = null;
+            const scoreEl = document.getElementById("scoreValue");
+            if (scoreEl) {
+                const scoreText = scoreEl.textContent.trim();
+                if (scoreText !== "—" && scoreText !== "" && !isNaN(parseInt(scoreText, 10))) {
+                    score = parseInt(scoreText, 10);
+                }
             }
 
-            // 2. Si no hay score real, asignar según el nivel (fallback definitivo)
-            if (score === null || score === undefined || isNaN(score) || score === 0) {
-                if (level === "bajo" || level === "green") score = 15;
-                else if (level === "medio" || level === "yellow") score = 50;
-                else if (level === "alto" || level === "red") score = 85;
-                else score = 30;
+            // 3. Si no se obtuvo desde la UI, usar lastResult
+            if (score === null || score === undefined) {
+                const raw = lastResult?.analysis || lastResult || {};
+                score = raw.structural_index ?? raw.score ?? null;
+                if (typeof score === "number") {
+                    if (score <= 1) {
+                        score = Math.round(score * 100);
+                    } else {
+                        score = Math.round(score);
+                    }
+                }
             }
 
-            // 3. Asegurar rango 0-100
+            // 4. Si aún no hay score, redirigir a la landing (fallback seguro)
+            if (score === null || score === undefined || isNaN(score)) {
+                chrome.tabs.create({ url: "https://chenuke.com/#planes" });
+                return;
+            }
+
+            // 5. Asegurar que score esté entre 0 y 100
             score = Math.min(Math.max(score, 0), 100);
 
-            // 4. Confianza
+            // 6. Obtener level y confianza
+            const raw = lastResult?.analysis || lastResult || {};
+            const level = (raw.level ?? "").toLowerCase();
             let conf = raw.confidence != null
                 ? Math.round(raw.confidence <= 1 ? raw.confidence * 100 : raw.confidence)
                 : "";
 
-            // 5. Guardar en localStorage
+            // 7. Guardar el análisis en localStorage antes de abrir la página
             try {
                 localStorage.setItem('chenuke_last_analysis', JSON.stringify({
                     score: score,
                     level: level,
                     confidence: conf
                 }));
-            } catch (e) {}
+            } catch (e) {
+                // Ignorar errores de localStorage (puede estar deshabilitado)
+            }
 
-            // 6. Construir y abrir URL
+            // 8. Construir y abrir la URL
             const url = `${PRO_URL}?score=${score}&level=${level}&conf=${conf}`;
-            console.log("🔗 Abriendo URL:", url);
             chrome.tabs.create({ url });
         });
     }
 
     // --- OTROS EVENT LISTENERS ---
+
     if (analyzeBtn) {
         analyzeBtn.addEventListener("click", () => runAnalysis({ force: true }));
     }
+
     if (retryErrorBtn) {
         retryErrorBtn.addEventListener("click", () => runAnalysis({ force: true }));
     }
+
     if (clearCacheBtn) {
         clearCacheBtn.addEventListener("click", async () => {
             try {
@@ -676,5 +780,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         });
     }
 
+    // Iniciar análisis al abrir el popup
     runAnalysis({ force: false });
 });
