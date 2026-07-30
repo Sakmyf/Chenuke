@@ -5,6 +5,7 @@
 const API_URL = "https://chenuke-production-8e78.up.railway.app/v3/verify";
 const CHAT_API_URL = "https://chenuke-production-8e78.up.railway.app/v3/chat-analysis";
 const REGISTER_URL = "https://chenuke-production-8e78.up.railway.app/v3/register";
+const ACTIVATE_URL = "https://chenuke-production-8e78.up.railway.app/v3/activate";
 const PRO_URL = "https://chenuke.com/analysis";
 
 const API_TIMEOUT = 30000;
@@ -20,30 +21,24 @@ let proToken = null;
 // REGISTRO DE EXTENSIÓN (al cargar el popup)
 // ======================================================
 async function registerExtension() {
+    // Fuente de verdad local del plan/token = storage (lo escribe /v3/activate).
+    const stored = await chrome.storage.local.get(["extension_plan", "pro_token"]);
+    extensionPlan = stored.extension_plan || "free";
+    proToken = stored.pro_token || null;
+
+    // /v3/register es SOLO telemetría de instalación: nunca devuelve token
+    // ni debe pisar el estado de activación. Best-effort, no bloquea la UI.
     try {
         const extId = chrome.runtime.id;
-        const response = await fetch(REGISTER_URL, {
+        await fetch(REGISTER_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ extension_id: extId })
         });
-        if (!response.ok) throw new Error("Error registrando extensión");
-        const data = await response.json();
-        extensionPlan = data.plan || "free";
-        proToken = data.pro_token || null;
-        await chrome.storage.local.set({
-            extension_plan: extensionPlan,
-            pro_token: proToken
-        });
-        console.log("✅ Extensión registrada, plan:", extensionPlan, "token:", proToken ? "sí" : "no");
-        return data;
     } catch (e) {
-        console.warn("⚠️ No se pudo registrar la extensión:", e);
-        const stored = await chrome.storage.local.get(["extension_plan", "pro_token"]);
-        extensionPlan = stored.extension_plan || "free";
-        proToken = stored.pro_token || null;
-        return null;
+        console.warn("⚠️ No se pudo registrar (telemetría):", e);
     }
+    return null;
 }
 
 // ======================================================
@@ -276,6 +271,118 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (aiAnalyzeBtn) {
         aiAnalyzeBtn.addEventListener("click", runAIAnalysis);
     }
+
+    // ============================================================
+    // ACTIVACIÓN POR LICENSE KEY (/v3/activate)
+    // ============================================================
+    const activateSection = document.getElementById("activateSection");
+    const licenseInput = document.getElementById("licenseInput");
+    const activateBtn = document.getElementById("activateBtn");
+    const activateStatus = document.getElementById("activateStatus");
+    const planActive = document.getElementById("planActive");
+    const planActiveText = document.getElementById("planActiveText");
+    const changeKeyLink = document.getElementById("changeKeyLink");
+
+    function setActivateStatus(msg, kind) {
+        if (!activateStatus) return;
+        activateStatus.textContent = msg || "";
+        if (!msg) {
+            activateStatus.classList.add("hidden");
+            return;
+        }
+        activateStatus.classList.remove("hidden");
+        activateStatus.style.color =
+            kind === "ok" ? "#4ade80" : kind === "error" ? "#f87171" : "#94a3b8";
+    }
+
+    function refreshActivationUI() {
+        const hasPlan =
+            (extensionPlan === "pro" || extensionPlan === "premium") && !!proToken;
+        if (hasPlan) {
+            if (planActive) {
+                planActive.classList.remove("hidden");
+                if (planActiveText)
+                    planActiveText.textContent = `Plan ${extensionPlan.toUpperCase()} activado`;
+            }
+            if (activateSection) activateSection.classList.add("hidden");
+        } else {
+            if (planActive) planActive.classList.add("hidden");
+            if (activateSection) activateSection.classList.remove("hidden");
+        }
+    }
+
+    async function activatePlan(licenseKey) {
+        const key = String(licenseKey || "").trim();
+        if (!key) return { ok: false, message: "Ingresá la clave que te llegó al email." };
+        try {
+            const res = await fetchWithTimeout(ACTIVATE_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ license_key: key })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                return { ok: false, message: data?.detail || getHttpErrorMessage(res.status) };
+            }
+            if (!data.pro_token) {
+                return { ok: false, message: "Respuesta inválida del servidor de activación." };
+            }
+            proToken = data.pro_token;
+            extensionPlan = data.plan || "pro";
+            await chrome.storage.local.set({
+                pro_token: proToken,
+                extension_plan: extensionPlan
+            });
+            return { ok: true, plan: extensionPlan, limit: data.analyses_limit };
+        } catch (err) {
+            return { ok: false, message: getUserErrorMessage(err) };
+        }
+    }
+
+    async function handleActivate() {
+        const key = (licenseInput?.value || "").trim();
+        if (!key) {
+            setActivateStatus("Ingresá la clave que te llegó al email.", "error");
+            return;
+        }
+        if (!activateBtn) return;
+        const original = activateBtn.textContent;
+        activateBtn.disabled = true;
+        activateBtn.textContent = "Activando...";
+        setActivateStatus("", "");
+
+        const result = await activatePlan(key);
+
+        activateBtn.disabled = false;
+        activateBtn.textContent = original;
+
+        if (result.ok) {
+            if (licenseInput) licenseInput.value = "";
+            setActivateStatus(`Plan ${String(result.plan).toUpperCase()} activado.`, "ok");
+            updateAIButton(extensionPlan);
+            refreshActivationUI();
+        } else {
+            setActivateStatus(result.message || "No se pudo activar la clave.", "error");
+        }
+    }
+
+    if (activateBtn) activateBtn.addEventListener("click", handleActivate);
+    if (licenseInput) {
+        licenseInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") handleActivate();
+        });
+    }
+    if (changeKeyLink) {
+        changeKeyLink.addEventListener("click", (e) => {
+            e.preventDefault();
+            if (planActive) planActive.classList.add("hidden");
+            if (activateSection) activateSection.classList.remove("hidden");
+            setActivateStatus("", "");
+            if (licenseInput) licenseInput.focus();
+        });
+    }
+
+    refreshActivationUI();
 
     function showError(message) {
         if (labelBadge) {
@@ -605,6 +712,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
 
         const userPlan = data?.meta?.plan || extensionPlan || "free";
+
+        // Sincronizar plan local con la verdad del server (revocación / cambio de plan).
+        if (data?.meta?.plan && data.meta.plan !== extensionPlan) {
+            extensionPlan = data.meta.plan;
+            chrome.storage.local.set({ extension_plan: extensionPlan });
+            refreshActivationUI();
+        }
 
         // Mostrar el score en el popup (solo para PRO/PREMIUM)
         if (scoreEl) {

@@ -10,6 +10,9 @@ const REGISTER_URL = "https://chenuke-production-8e78.up.railway.app/v3/register
 
 // --- REGISTRO DE EXTENSIÓN (al instalarse/actualizarse) ---
 async function registerExtension() {
+    // /v3/register es SOLO telemetría de instalación. NUNCA devuelve token.
+    // No escribe en storage: el pro_token es propiedad del flujo de activación
+    // (/v3/activate) y pisarlo acá borraría el plan que activó el usuario.
     try {
         const extId = chrome.runtime.id;
         const response = await fetch(REGISTER_URL, {
@@ -18,12 +21,7 @@ async function registerExtension() {
             body: JSON.stringify({ extension_id: extId })
         });
         if (!response.ok) throw new Error("Error registrando extensión");
-        const data = await response.json();
-        await chrome.storage.local.set({
-            extension_plan: data.plan,
-            pro_token: data.pro_token || null
-        });
-        console.log("✅ Extensión registrada en background, plan:", data.plan);
+        console.log("✅ Extensión registrada (telemetría)");
     } catch (e) {
         console.warn("⚠️ No se pudo registrar la extensión en background:", e);
     }

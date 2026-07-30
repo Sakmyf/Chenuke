@@ -6,21 +6,73 @@
   <title>Chenuke</title>
   <link rel="stylesheet" href="popup.css">
   <style>
-    #forceReportBtn {
-      background: #3b82f6 !important;
-      color: white !important;
-      margin-top: 8px !important;
-      width: 100% !important;
-      padding: 10px !important;
-      border: none !important;
-      border-radius: 10px !important;
-      cursor: pointer !important;
-      font-weight: 600 !important;
-      font-size: 0.98rem !important;
+    .activate-section {
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid rgba(148,163,184,0.25);
+      border-radius: 10px;
+      background: rgba(148,163,184,0.06);
     }
-    #forceReportBtn:hover {
-      background: #60a5fa !important;
-      transform: translateY(-2px) !important;
+    .activate-label {
+      display: block;
+      font-size: 0.82rem;
+      color: #94a3b8;
+      margin-bottom: 8px;
+      line-height: 1.35;
+    }
+    .activate-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 9px 10px;
+      border: 1px solid rgba(148,163,184,0.35);
+      border-radius: 8px;
+      background: #0f172a;
+      color: #e2e8f0;
+      font-size: 0.82rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: 0.3px;
+    }
+    .activate-input:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+    .activate-btn {
+      width: 100%;
+      margin-top: 8px;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      background: #3b82f6;
+      color: #fff;
+      font-weight: 600;
+      font-size: 0.92rem;
+      cursor: pointer;
+    }
+    .activate-btn:hover { background: #2563eb; }
+    .activate-btn:disabled { opacity: 0.6; cursor: default; }
+    .activate-status {
+      margin-top: 8px;
+      font-size: 0.82rem;
+      line-height: 1.35;
+    }
+    .plan-active {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(34,197,94,0.12);
+      color: #4ade80;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .plan-active::before { content: "✓"; margin-right: 6px; font-weight: 700; }
+    .change-key-link {
+      color: #94a3b8;
+      font-size: 0.78rem;
+      text-decoration: underline;
+      white-space: nowrap;
     }
   </style>
 </head>
@@ -43,23 +95,24 @@
       Analizando en segundo plano...
     </div>
 
-    <div id="labelBadge" class="signal-label" role="status" aria-live="assertive" aria-atomic="true">
-      🔴 Alto riesgo
+    <div id="labelBadge" class="signal-label" role="status" aria-live="assertive" aria-atomic="true"
+         style="background: rgba(148,163,184,0.18); color:#cbd5e1;">
+      Listo para analizar
     </div>
 
     <section class="score-container" aria-label="Puntuación de riesgo">
       <div class="score-main">
-        <span id="scoreValue" aria-label="Puntuación">85</span>
+        <span id="scoreValue" aria-label="Puntuación">—</span>
         <span class="score-label" aria-hidden="true"> /100</span>
       </div>
       <div class="confidence">
-        Confianza: <span id="confidenceValue" aria-label="Porcentaje de confianza">25</span>%
+        Confianza: <span id="confidenceValue" aria-label="Porcentaje de confianza">—</span>%
       </div>
     </section>
 
     <section id="summarySection" aria-label="Resumen del análisis">
       <div id="summary" class="insight-box">
-        Presión narrativa significativa detectada
+        Abrí una página y presioná «Analizar página».
       </div>
     </section>
 
@@ -70,8 +123,8 @@
     </div>
 
     <section id="proSection" class="pro-section">
-      <div id="proWarning" class="warning hidden" role="alert">
-        <span aria-hidden="true">⚠️</span> Hay señales más profundas que no estás viendo
+      <div id="proWarning" class="warning hidden" role="status">
+        El informe completo incluye desglose por dimensión y citas textuales.
       </div>
       
       <div id="proMetrics" class="hidden" aria-label="Métricas detalladas">
@@ -84,13 +137,26 @@
       </button>
     </section>
 
+    <section id="activateSection" class="activate-section" aria-label="Activar plan">
+      <label id="activateLabel" for="licenseInput" class="activate-label">
+        Pegá la clave de licencia que te llegó al email de compra.
+      </label>
+      <input id="licenseInput" type="text" class="activate-input"
+             placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+             autocomplete="off" spellcheck="false"
+             aria-labelledby="activateLabel" />
+      <button id="activateBtn" class="activate-btn">Activar plan</button>
+      <div id="activateStatus" class="activate-status hidden" role="status" aria-live="polite"></div>
+    </section>
+
+    <section id="planActive" class="plan-active hidden" role="status" aria-live="polite">
+      <span id="planActiveText">Plan activado</span>
+      <a href="#" id="changeKeyLink" class="change-key-link">Usar otra clave</a>
+    </section>
+
     <footer class="actions" role="contentinfo">
       <button id="analyzeBtn" aria-label="Iniciar nuevo análisis de la página">
         Analizar página
-      </button>
-      
-      <button id="forceReportBtn">
-        📊 Ver informe completo (FORZADO)
       </button>
       
       <button id="aiAnalyzeBtn" class="secondary-btn" style="margin-top: 6px;">
