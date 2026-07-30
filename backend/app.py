@@ -477,16 +477,20 @@ async def upgrade_extension(req: UpgradeRequest, request: Request):
             ext = Extension(extension_id=reference, plan="free", pro_token=None)
             db.add(ext)
 
+        # El límite de informes lo define el PLAN, no el request
+        # (fuente única de verdad; el webhook no puede inflar el límite).
+        PLAN_LIMITS = {"free": 0, "pro": 20, "premium": 100}
+
         ext.plan = req.plan
         ext.is_active = True
-        if req.analyses_limit is not None:
-            ext.analyses_limit = req.analyses_limit
+        ext.analyses_limit = PLAN_LIMITS[req.plan]
 
         if req.plan in ("pro", "premium") and not ext.pro_token:
             ext.pro_token = generate_pro_token()
         if req.plan == "free":
             # Revocación: el token deja de resolver a un plan pago.
             ext.pro_token = None
+            ext.analyses_used = 0  # reset al revocar
 
         db.commit()
         db.refresh(ext)
