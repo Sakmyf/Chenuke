@@ -10,3 +10,10 @@ psycopg2-binary==2.9.9
 pydantic==2.6.1
 slowapi==0.1.9
 python-dotenv==1.0.1
+
+# IA (informe PRO/PREMIUM vía DeepSeek — cliente compatible OpenAI)
+# Sin esta dependencia, /v3/chat-analysis devuelve 503 silenciosamente.
+openai==1.35.13
+
+# Cache distribuida (opcional: solo si REDIS_URL está configurada)
+redis==5.0.4

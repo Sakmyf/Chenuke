@@ -74,11 +74,11 @@ def analyze(text: str) -> dict:
         score += LONG_SENTENCE_SCORE
         signals.append("narrativa extensa")
 
-    # 5) Exceso de adjetivos (reusa EMOTIONAL_WORDS, no duplica lista)
-    adjective_hits = sum(1 for w in EMOTIONAL_WORDS if w in t)
-    if adjective_hits >= ADJECTIVE_MIN_HITS:
-        score += ADJECTIVE_SCORE
-        signals.append("exceso de adjetivos")
+    # 5) FIX v15.25: eliminado "exceso de adjetivos".
+    # Recorría la misma lista EMOTIONAL_WORDS del paso 1 y volvía a puntuar
+    # los mismos hits (+0.15 extra por señales ya contadas) → doble conteo
+    # dentro del propio módulo. La intensidad emocional ya escala con
+    # EMOTION_PER_HIT * hits en el paso 1.
 
     score = max(0.0, min(score, 1.0))
 

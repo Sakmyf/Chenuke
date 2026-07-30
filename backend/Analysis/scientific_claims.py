@@ -36,7 +36,9 @@ _SUPPORT_INDICATORS: Final[tuple[str, ...]] = (
     "ensayo clínico", "universidad", "revista científica",
     "publicado en", "journal of", "clinical trial",
     "published in", "nih", "who", "lancet", "nature",
-    "investigación publicada", "peer.?review",
+    "investigación publicada",
+    # FIX v15.25: eran sintaxis regex en un check de substring → nunca matcheaban
+    "peer review", "peer-review", "revisión por pares",
 )
 
 # Indicadores débiles: contribuyen pero no bastan por sí solos.
@@ -63,12 +65,14 @@ def check_scientific_claims(text: str) -> RuleResult:
     if not matches:
         return result
 
-    # Respaldo fuerte: requiere calificador (no basta "estudio" solo)
+    # FIX v15.25: la expresión anterior `has_strong or (has_weak and has_strong)`
+    # era código muerto — has_weak nunca aportaba. Semántica correcta:
+    # solo el respaldo FUERTE anula la penalización; el débil ("estudio",
+    # "según") atenúa pero no anula (ver rama elif más abajo).
     has_strong = any(ind in t for ind in _SUPPORT_INDICATORS)
     has_weak = any(ind in t for ind in _SUPPORT_WEAK)
-    has_support = has_strong or (has_weak and has_strong)
 
-    if not has_support:
+    if not has_strong and not has_weak:
         result.points += min(
             _SCORE_NO_SUPPORT_BASE + (len(matches) - 1) * _SCORE_NO_SUPPORT_PER_EXTRA,
             _SCORE_NO_SUPPORT_CAP,
@@ -77,6 +81,11 @@ def check_scientific_claims(text: str) -> RuleResult:
         result.evidence.append(
             f"Afirmación científica/salud sin respaldo ({len(matches)} señales)"
         )
+    elif not has_strong:
+        # Solo respaldo débil ("estudio", "según"): penalización reducida
+        result.points += _SCORE_PARTIAL_SUPPORT
+        result.reasons.append("weak_support_for_health_claims")
+        result.evidence.append("Reclamo de salud con respaldo débil o genérico")
     elif len(matches) >= _PARTIAL_SUPPORT_MIN_CLAIMS:
         result.points += _SCORE_PARTIAL_SUPPORT
         result.reasons.append("multiple_health_claims_with_partial_support")

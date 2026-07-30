@@ -30,7 +30,7 @@ from backend.confidence_score import compute_confidence
 from backend.app import _executor as GLOBAL_EXECUTOR
 
 
-ENGINE_VERSION = "15.24-pro-full"
+ENGINE_VERSION = "15.25-token-auth"
 
 
 BASE_WEIGHTS = {
