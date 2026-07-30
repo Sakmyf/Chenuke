@@ -13,7 +13,8 @@ python-dotenv==1.0.1
 
 # IA (informe PRO/PREMIUM vía DeepSeek — cliente compatible OpenAI)
 # Sin esta dependencia, /v3/chat-analysis devuelve 503 silenciosamente.
-openai==1.35.13
+# >=1.55 requerido: versiones anteriores rompen con httpx 0.28 (kwarg proxies).
+openai==1.59.7
 
 # Cache distribuida (opcional: solo si REDIS_URL está configurada)
 redis==5.0.4

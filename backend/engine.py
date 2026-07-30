@@ -1,3 +1,4 @@
+import os
 import re
 import traceback
 from urllib.parse import urlparse
@@ -26,8 +27,18 @@ from backend.context_classifier import classify_context
 from backend.weight_engine import adjust_weights
 from backend.confidence_score import compute_confidence
 
-# === CAMBIO CRÍTICO: Importamos el pool global de hilos desde app.py ===
-from backend.app import _executor as GLOBAL_EXECUTOR
+# === FIX v15.25: pool de hilos PROPIO del engine ===
+# El import anterior (from backend.app import _executor) creaba un import
+# circular: app.py importa engine ANTES de definir _executor → el engine
+# nunca cargaba y el fallback de app.py servía resultados fabricados
+# (score 50 fijo). Además, compartir el pool de 2 workers de app con las
+# 15 reglas del engine cuasi-serializaba el análisis.
+from concurrent.futures import ThreadPoolExecutor
+
+GLOBAL_EXECUTOR = ThreadPoolExecutor(
+    max_workers=int(os.getenv("ENGINE_RULE_WORKERS", "8")),
+    thread_name_prefix="engine-rule",
+)
 
 
 ENGINE_VERSION = "15.25-token-auth"
