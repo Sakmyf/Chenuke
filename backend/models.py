@@ -76,7 +76,10 @@ class Extension(Base):
     extension_id = Column(String(255), unique=True, index=True, nullable=False)
     is_active = Column(Boolean, default=True)
     plan = Column(String(20), default="free")
-    pro_token = Column(String(64), nullable=True, unique=True)  # 👈 NUEVO
+    pro_token = Column(String(64), nullable=True, unique=True)
+    # --- Lemon Squeezy license (activación por el usuario, v15.26) ---
+    license_key = Column(String(64), nullable=True, index=True)
+    license_instance_id = Column(String(64), nullable=True)
     analyses_used = Column(Integer, default=0)
     analyses_limit = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), default=_utcnow)

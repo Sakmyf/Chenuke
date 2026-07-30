@@ -5,6 +5,9 @@ import json
 import logging
 import asyncio
 import secrets
+import urllib.request
+import urllib.parse
+import urllib.error
 from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Optional, Dict, Any
@@ -63,6 +66,15 @@ ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(","
 DEMO_KEY = os.getenv("DEMO_KEY", "")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")  # auth de /v3/upgrade (solo webhook de pagos)
 DEV_MODE = os.getenv("DEV_MODE", "true").lower() == "true"
+
+# --- Lemon Squeezy License API (activación iniciada por el usuario) ---
+# La License API se autentica con la propia license key: NO requiere API key
+# de cuenta. Solo necesitamos los IDs para verificar que la key es de Chénuke
+# y para mapear la variante comprada al plan.
+LEMON_LICENSE_BASE = "https://api.lemonsqueezy.com/v1/licenses"
+LEMON_STORE_ID = os.getenv("LEMON_STORE_ID", "").strip()
+LEMON_VARIANT_PRO = os.getenv("LEMON_VARIANT_PRO", "").strip()
+LEMON_VARIANT_PREMIUM = os.getenv("LEMON_VARIANT_PREMIUM", "").strip()
 
 # Caché
 CACHE_TTL = int(os.getenv("CACHE_TTL", "3600"))  # 1 hora
@@ -332,6 +344,40 @@ async def resolve_plan_from_db(pro_token: str) -> tuple[str, Optional[Extension]
 def generate_pro_token() -> str:
     return secrets.token_urlsafe(32)  # 43 caracteres
 
+# ----- Lemon Squeezy License API -----
+# Llamada síncrona (urllib) corrida en thread para no bloquear el event loop.
+# Lemon devuelve JSON legible incluso en 400/404 (activated/valid = false),
+# así que capturamos HTTPError y parseamos el body igual.
+def _lemon_license_call_sync(action: str, params: dict) -> dict:
+    url = f"{LEMON_LICENSE_BASE}/{action}"
+    data = urllib.parse.urlencode(params).encode()
+    request_obj = urllib.request.Request(url, data=data, method="POST")
+    request_obj.add_header("Accept", "application/json")
+    request_obj.add_header("Content-Type", "application/x-www-form-urlencoded")
+    try:
+        with urllib.request.urlopen(request_obj, timeout=10) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read().decode())
+        except Exception:
+            return {"error": f"http_{e.code}"}
+    except Exception as e:
+        logger.error(f"Lemon license API ({action}) network error: {e}")
+        return {"error": "network"}
+
+async def lemon_license(action: str, **params) -> dict:
+    return await asyncio.to_thread(_lemon_license_call_sync, action, params)
+
+def _plan_from_variant(variant_id) -> Optional[str]:
+    """Mapea la variante comprada en Lemon al plan de Chénuke."""
+    vid = str(variant_id)
+    if LEMON_VARIANT_PRO and vid == LEMON_VARIANT_PRO:
+        return "pro"
+    if LEMON_VARIANT_PREMIUM and vid == LEMON_VARIANT_PREMIUM:
+        return "premium"
+    return None
+
 # ----- Helper: strip_for_plan -----
 def strip_for_plan(response: dict, plan: str) -> dict:
     out = json.loads(json.dumps(response))
@@ -416,6 +462,10 @@ class UpgradeRequest(BaseModel):
     reference: str
     plan: str = "pro"          # "pro" | "premium" | "free" (revocación)
     analyses_limit: Optional[int] = None
+
+class ActivateRequest(BaseModel):
+    license_key: str
+    email: str = ""            # opcional: si se envía, se valida contra la compra
 
 # ============================================================
 # NUEVOS ENDPOINTS DE SEGURIDAD
@@ -503,6 +553,118 @@ async def upgrade_extension(req: UpgradeRequest, request: Request):
             "plan": ext.plan,
             "pro_token": ext.pro_token,
             "analyses_limit": ext.analyses_limit
+        }
+    finally:
+        db.close()
+
+@app.post("/v3/activate")
+async def activate_license(req: ActivateRequest, request: Request):
+    """
+    Activación iniciada por el usuario. Reemplaza la entrega manual del token:
+    el comprador pega la license key que Lemon le envió por email y, a cambio,
+    el backend emite (o reutiliza) el pro_token interno que /v3/verify ya usa.
+
+    Flujo:
+      1) Si ya existe una fila para esta key con instancia registrada →
+         validate (no consume activación) y se devuelve el token existente.
+         Esto permite reinstalar la extensión / usar un segundo dispositivo
+         sin gastar activaciones.
+      2) Primera vez → activate contra Lemon (consume 1 activación; respeta el
+         activation_limit configurado en el dashboard). Se verifica store_id y
+         se mapea la variante al plan antes de emitir el token.
+
+    La revocación por cancelación/expiración de la suscripción sigue a cargo del
+    webhook (/v3/upgrade con plan=free); acá solo se corta el acceso si Lemon
+    reporta la licencia como no válida al revalidarla.
+    """
+    key = req.license_key.strip()
+    if not key:
+        raise HTTPException(400, "license_key requerido")
+    if not DB_AVAILABLE or Extension is None:
+        raise HTTPException(503, "Base de datos no disponible")
+    if not LEMON_STORE_ID:
+        raise HTTPException(503, "Activación no configurada")
+
+    PLAN_LIMITS = {"pro": 20, "premium": 100}
+
+    db = SessionLocal()
+    try:
+        existing = db.query(Extension).filter(Extension.license_key == key).first()
+
+        # --- Caso reactivación: la key ya fue activada antes ---
+        if existing and existing.license_instance_id:
+            res = await lemon_license(
+                "validate", license_key=key,
+                instance_id=existing.license_instance_id
+            )
+            if res.get("valid"):
+                return {
+                    "status": "ok",
+                    "plan": existing.plan,
+                    "pro_token": existing.pro_token,
+                    "analyses_limit": existing.analyses_limit,
+                }
+            # Licencia ya no vigente (expirada/deshabilitada/cancelada) → revocar
+            existing.plan = "free"
+            existing.pro_token = None
+            existing.analyses_limit = 0
+            db.commit()
+            raise HTTPException(403, "La licencia ya no está activa.")
+
+        # --- Primera activación de esta key ---
+        res = await lemon_license(
+            "activate", license_key=key, instance_name="chenuke-extension"
+        )
+        if not res.get("activated"):
+            err = str(res.get("error") or "").lower()
+            if "activation limit" in err or "reached" in err:
+                raise HTTPException(403, "Se alcanzó el límite de activaciones de esta licencia.")
+            raise HTTPException(403, "Licencia inválida o no encontrada.")
+
+        meta = res.get("meta") or {}
+        if str(meta.get("store_id")) != LEMON_STORE_ID:
+            raise HTTPException(403, "La licencia no pertenece a Chénuke.")
+
+        plan = _plan_from_variant(meta.get("variant_id"))
+        if not plan:
+            raise HTTPException(403, "Producto no reconocido.")
+
+        req_email = req.email.strip().lower()
+        if req_email and req_email != str(meta.get("customer_email", "")).lower():
+            raise HTTPException(403, "El email no coincide con la compra.")
+
+        instance = res.get("instance") or {}
+        lk = res.get("license_key") or {}
+        lk_id = lk.get("id")
+
+        # Reusar fila si ya existía por identidad de licencia; si no, crearla.
+        ext = existing
+        if ext is None:
+            ext = db.query(Extension).filter(
+                Extension.extension_id == f"lemon-license:{lk_id}"
+            ).first()
+        if ext is None:
+            ext = Extension(extension_id=f"lemon-license:{lk_id}", plan="free")
+            db.add(ext)
+
+        ext.plan = plan
+        ext.is_active = True
+        ext.analyses_limit = PLAN_LIMITS[plan]
+        ext.license_key = key
+        ext.license_instance_id = instance.get("id")
+        if not ext.pro_token:
+            ext.pro_token = generate_pro_token()
+
+        db.commit()
+        db.refresh(ext)
+        logger.info("Licencia activada", extra={"extra": {
+            "plan": plan, "lk_id": lk_id
+        }})
+        return {
+            "status": "ok",
+            "plan": ext.plan,
+            "pro_token": ext.pro_token,
+            "analyses_limit": ext.analyses_limit,
         }
     finally:
         db.close()
