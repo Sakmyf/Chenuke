@@ -67,23 +67,6 @@
       </button>
     </section>
 
-    <section id="activateSection" class="activate-section" aria-label="Activar plan">
-      <label id="activateLabel" for="licenseInput" class="activate-label">
-        Pegá la clave de licencia que te llegó al email de compra.
-      </label>
-      <input id="licenseInput" type="text" class="activate-input"
-             placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
-             autocomplete="off" spellcheck="false"
-             aria-labelledby="activateLabel" />
-      <button id="activateBtn" class="activate-btn">Activar plan</button>
-      <div id="activateStatus" class="activate-status hidden" role="status" aria-live="polite"></div>
-    </section>
-
-    <section id="planActive" class="plan-active hidden" role="status" aria-live="polite">
-      <span id="planActiveText">Plan activado</span>
-      <a href="#" id="changeKeyLink" class="change-key-link">Usar otra clave</a>
-    </section>
-
     <footer class="actions" role="contentinfo">
       <button id="analyzeBtn" aria-label="Iniciar nuevo análisis de la página">
         Analizar página
@@ -98,6 +81,28 @@
         <span aria-hidden="true">🗑️</span> Limpiar caché
       </button>
     </footer>
+
+    <section id="activateSection" class="activate-section" aria-label="Activar plan">
+      <details class="activate-details">
+        <summary class="activate-summary">Ya tengo una clave de licencia</summary>
+        <div class="activate-body">
+          <label id="activateLabel" for="licenseInput" class="activate-label">
+            Pegá la clave que te llegó al email de compra.
+          </label>
+          <input id="licenseInput" type="text" class="activate-input"
+                 placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+                 autocomplete="off" spellcheck="false"
+                 aria-labelledby="activateLabel" />
+          <button id="activateBtn" class="activate-btn">Activar plan</button>
+          <div id="activateStatus" class="activate-status hidden" role="status" aria-live="polite"></div>
+        </div>
+      </details>
+    </section>
+
+    <section id="planActive" class="plan-active hidden" role="status" aria-live="polite">
+      <span id="planActiveText">Plan activado</span>
+      <a href="#" id="changeKeyLink" class="change-key-link">Usar otra clave</a>
+    </section>
 
   </div>
 

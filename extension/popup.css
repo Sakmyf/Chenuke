@@ -281,7 +281,6 @@ body {
 /* =========================
    PRO SECTION
    Sin card propia: cada hijo se estiliza solo.
-   Así no queda un recuadro vacío cuando todo está oculto.
 ========================= */
 
 .pro-section {
@@ -384,9 +383,52 @@ body {
 
 /* =========================
    ACTIVACIÓN POR LICENSE KEY
+   Colapsada: solo la abre quien ya compró.
 ========================= */
 
 .activate-section {
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.activate-details {
+  border-top: 1px solid #1e293b;
+  padding-top: 10px;
+}
+
+.activate-summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 11px;
+  color: #64748b;
+  text-align: center;
+  padding: 2px 0;
+  transition: color 0.2s ease;
+  user-select: none;
+}
+
+.activate-summary::-webkit-details-marker { display: none; }
+.activate-summary::marker { content: ""; }
+
+.activate-summary:hover { color: #94a3b8; }
+
+.activate-summary::after {
+  content: " ▾";
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+.activate-details[open] .activate-summary::after { content: " ▴"; }
+
+.activate-summary:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.activate-body {
+  margin-top: 10px;
   padding: 12px;
   border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 10px;
@@ -421,18 +463,22 @@ body {
 .activate-btn {
   width: 100%;
   margin-top: 8px;
-  padding: 10px;
-  border: none;
+  padding: 9px;
+  border: 1px solid #3b82f6;
   border-radius: 8px;
-  background: #3b82f6;
-  color: #fff;
+  background: transparent;
+  color: #60a5fa;
   font-weight: 600;
   font-size: 12px;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: all 0.2s ease;
 }
 
-.activate-btn:hover { background: #2563eb; }
+.activate-btn:hover {
+  background: rgba(59, 130, 246, 0.12);
+  color: #93c5fd;
+}
+
 .activate-btn:disabled { opacity: 0.6; cursor: default; }
 
 .activate-status {
@@ -524,6 +570,23 @@ button#analyzeBtn:focus-visible {
 .secondary-btn:focus-visible {
   outline: 2px solid #64748b;
   outline-offset: 2px;
+}
+
+/* En free (pro-section bloqueada), el botón de ampliar
+   pasa a ser la acción visualmente primaria. */
+.container:has(.pro-section.locked) #aiAnalyzeBtn {
+  border-color: rgba(255, 122, 24, 0.5);
+  background: rgba(255, 122, 24, 0.1);
+  color: #fdba74;
+  font-weight: 700;
+  font-size: 12px;
+  padding: 10px;
+}
+
+.container:has(.pro-section.locked) #aiAnalyzeBtn:hover {
+  background: rgba(255, 122, 24, 0.18);
+  color: #fed7aa;
+  border-color: rgba(255, 122, 24, 0.75);
 }
 
 /* =========================
