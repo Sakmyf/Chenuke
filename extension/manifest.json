@@ -1,14 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "Chenuke",
+  "name": "Chénuke",
   "version": "0.5.1",
-  "description": "Chenuke: Análisis estructural para detectar manipulación en contenido web y e-commerce. Optimiza ventas con métricas.",
-  "author": "Chenuke Team",
+  "description": "Detecta señales estructurales de manipulación, urgencia artificial y promesas desproporcionadas en cualquier página web.",
+  "author": "Grupo Eryma LLC",
   "homepage_url": "https://chenuke.com",
   "minimum_chrome_version": "102",
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Chenuke",
+    "default_title": "Chénuke",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
@@ -16,8 +16,7 @@
     }
   },
   "background": {
-    "service_worker": "service_worker.js",
-    "type": "module"
+    "service_worker": "service_worker.js"
   },
   "permissions": [
     "activeTab",
@@ -29,12 +28,6 @@
   "host_permissions": [
     "https://chenuke-production-8e78.up.railway.app/*",
     "https://chenuke.com/*"
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": ["icons/*.png"],
-      "matches": ["https://*/*"]
-    }
   ],
   "icons": {
     "16": "icons/icon16.png",
