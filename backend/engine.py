@@ -41,7 +41,7 @@ GLOBAL_EXECUTOR = ThreadPoolExecutor(
 )
 
 
-ENGINE_VERSION = "15.25-token-auth"
+ENGINE_VERSION = "15.26-lure-floor"
 
 
 BASE_WEIGHTS = {
@@ -468,6 +468,16 @@ def _apply_critical_floors(
 
     if has_promise and financial_landing:
         return max(risk_score, 0.50)
+
+    # v15.26 — Señuelo de dinero/premio sin contraprestación.
+    # Firma de la cadena viral (WhatsApp), el sorteo falso y el phishing
+    # de premio. NO es landing comercial ni tiene commercial_risk, así que
+    # ningún piso anterior la alcanza: con 14 módulos de peso ~0.07 el
+    # índice se quedaba en ~20 y el motor devolvía "bajo riesgo".
+    # `not news_like` evita castigar a la nota periodística que INFORMA
+    # sobre la estafa (que usa el mismo vocabulario para denunciarla).
+    if "wealth_lure_pattern" in promises_reasons and not news_like:
+        return max(risk_score, 0.62)
 
     if news_like and not financial_landing:
         return risk_score
