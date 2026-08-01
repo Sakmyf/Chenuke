@@ -6,7 +6,6 @@ const API_URL = "https://chenuke-production-8e78.up.railway.app/v3/verify";
 const CHAT_API_URL = "https://chenuke-production-8e78.up.railway.app/v3/chat-analysis";
 const REGISTER_URL = "https://chenuke-production-8e78.up.railway.app/v3/register";
 const ACTIVATE_URL = "https://chenuke-production-8e78.up.railway.app/v3/activate";
-const PRO_URL = "https://chenuke.com/analysis";
 
 const API_TIMEOUT = 30000;
 const MAX_RETRIES = 2;
@@ -679,6 +678,30 @@ document.addEventListener("DOMContentLoaded", async () => {
             return;
         }
 
+        // v0.5.2 — el motor puede devolver level "error" (fail-closed).
+        // Sin esta rama caía en el else final y se pintaba "Alto riesgo":
+        // un error del motor disfrazado de resultado.
+        if (level === "error") {
+            if (labelBadge) {
+                labelBadge.textContent = "⚪ Análisis no disponible";
+                labelBadge.style.background = "rgba(148,163,184,0.18)";
+                labelBadge.style.color = "#cbd5e1";
+            }
+            if (scoreEl) scoreEl.textContent = "—";
+            if (confEl) confEl.textContent = "—";
+            if (summaryBox) {
+                summaryBox.textContent = analysis.insight || analysis.message || "El motor no pudo completar el análisis. Reintentá en unos segundos.";
+                summaryBox.classList.remove("hidden");
+            }
+            if (proSection) proSection.classList.add("locked");
+            if (proWarning) proWarning.style.display = "none";
+            if (upgradeBtn) upgradeBtn.style.display = "none";
+            if (proMetrics) proMetrics.classList.add("hidden");
+            const userPlan = data?.meta?.plan || extensionPlan || "free";
+            updateAIButton(userPlan);
+            return;
+        }
+
         if (level === "bajo" || level === "green") {
             if (labelBadge) {
                 labelBadge.textContent = "🟢 Bajo riesgo";
@@ -762,10 +785,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         } else {
             if (proSection) proSection.classList.remove("locked");
             if (proWarning) proWarning.style.display = "none";
-            // Mostrar el botón solo para PRO/PREMIUM
+            // El detalle completo ya se muestra en este popup (metricas + señales).
+            // La pagina web analysis.html quedo fuera: no aportaba datos nuevos.
             if (upgradeBtn) {
-                upgradeBtn.style.display = "block";
-                upgradeBtn.textContent = "📊 Ver análisis completo";
+                upgradeBtn.style.display = "none";
             }
             if (proMetrics && proList) {
                 proMetrics.classList.remove("hidden");
@@ -800,73 +823,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         updateAIButton(userPlan);
     }
 
-    // ============================================================
-    // EVENT LISTENER DEL BOTÓN "VER ANÁLISIS COMPLETO" (MEJORADO)
-    // ============================================================
-    if (upgradeBtn) {
-        upgradeBtn.addEventListener("click", () => {
-            // 1. Verificar que el usuario sea PRO/PREMIUM
-            const userPlan = lastResult?.meta?.plan || extensionPlan || "free";
-            if (userPlan === "free") {
-                chrome.tabs.create({ url: "https://chenuke.com/#planes" });
-                return;
-            }
-
-            // 2. Intentar obtener el score desde la UI (scoreValue) – es la fuente más confiable
-            let score = null;
-            const scoreEl = document.getElementById("scoreValue");
-            if (scoreEl) {
-                const scoreText = scoreEl.textContent.trim();
-                if (scoreText !== "—" && scoreText !== "" && !isNaN(parseInt(scoreText, 10))) {
-                    score = parseInt(scoreText, 10);
-                }
-            }
-
-            // 3. Si no se obtuvo desde la UI, usar lastResult
-            if (score === null || score === undefined) {
-                const raw = lastResult?.analysis || lastResult || {};
-                score = raw.structural_index ?? raw.score ?? null;
-                if (typeof score === "number") {
-                    if (score <= 1) {
-                        score = Math.round(score * 100);
-                    } else {
-                        score = Math.round(score);
-                    }
-                }
-            }
-
-            // 4. Si aún no hay score, redirigir a la landing (fallback seguro)
-            if (score === null || score === undefined || isNaN(score)) {
-                chrome.tabs.create({ url: "https://chenuke.com/#planes" });
-                return;
-            }
-
-            // 5. Asegurar que score esté entre 0 y 100
-            score = Math.min(Math.max(score, 0), 100);
-
-            // 6. Obtener level y confianza
-            const raw = lastResult?.analysis || lastResult || {};
-            const level = (raw.level ?? "").toLowerCase();
-            let conf = raw.confidence != null
-                ? Math.round(raw.confidence <= 1 ? raw.confidence * 100 : raw.confidence)
-                : "";
-
-            // 7. Guardar el análisis en localStorage antes de abrir la página
-            try {
-                localStorage.setItem('chenuke_last_analysis', JSON.stringify({
-                    score: score,
-                    level: level,
-                    confidence: conf
-                }));
-            } catch (e) {
-                // Ignorar errores de localStorage (puede estar deshabilitado)
-            }
-
-            // 8. Construir y abrir la URL
-            const url = `${PRO_URL}?score=${score}&level=${level}&conf=${conf}`;
-            chrome.tabs.create({ url });
-        });
-    }
 
     // --- OTROS EVENT LISTENERS ---
 

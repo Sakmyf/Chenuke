@@ -379,13 +379,28 @@ def _plan_from_variant(variant_id) -> Optional[str]:
     return None
 
 # ----- Helper: strip_for_plan -----
+_PAID_PLANS = ("pro", "premium")
+
 def strip_for_plan(response: dict, plan: str) -> dict:
     out = json.loads(json.dumps(response))
     out["meta"]["plan"] = plan
-    if plan != "pro":
+    # FIX: antes era `plan != "pro"` y a PREMIUM le borraba el bloque pro.
+    if plan not in _PAID_PLANS:
         out["analysis"]["pro"] = {}
         out["analysis"]["metrics"] = None
     return out
+
+# ----- Helper: recorte de la demo pública -----
+# La demo NUNCA devuelve el bloque `pro` (dimensiones, pesos,
+# signals_by_module con citas): eso ES el producto pago. Antes viajaba
+# completo aunque el frontend no lo renderizara (visible en devtools).
+_DEMO_ALLOWED_FIELDS = (
+    "structural_index", "level", "message",
+    "signals", "insight", "confidence",
+)
+
+def strip_for_demo(analysis: dict) -> dict:
+    return {k: analysis.get(k) for k in _DEMO_ALLOWED_FIELDS}
 
 # ----- Helper: build_response -----
 def build_response(result: dict, analysis_key: str, plan: str, cached: bool = False):
@@ -844,7 +859,7 @@ async def demo(req: DemoRequest, request: Request):
     async with key_lock:
         cached = await get_cached_result(analysis_key)
         if cached:
-            response_data = cached.get("analysis", {})
+            response_data = strip_for_demo(cached.get("analysis", {}))
             duration = time.time() - start_time
             update_metrics("free", True, duration)
             logger.info("Análisis cacheado (demo)", extra={"extra": {
@@ -889,7 +904,7 @@ async def demo(req: DemoRequest, request: Request):
             "cached": False,
             "ip": request.client.host if request.client else None
         }})
-        return {"status": "success", "cached": False, "analysis": response["analysis"]}
+        return {"status": "success", "cached": False, "analysis": strip_for_demo(response["analysis"])}
 
 # ============================================================
 # NUEVO ENDPOINT: /v3/chat-analysis (DeepSeek)
