@@ -41,7 +41,12 @@ GLOBAL_EXECUTOR = ThreadPoolExecutor(
 )
 
 
-ENGINE_VERSION = "15.26-lure-floor"
+ENGINE_VERSION = "15.27-fail-closed"
+
+# Fail-closed: si fallan más de este número de módulos ponderados,
+# el análisis no es confiable y se devuelve level "error" en vez de
+# un score fabricado con los sobrevivientes.
+MAX_FAILED_MODULES = 4
 
 
 BASE_WEIGHTS = {
@@ -535,6 +540,7 @@ def analyze_context(
         }
 
         results = {}
+        failed_modules: list[str] = []
 
         for name, future in futures.items():
             try:
@@ -542,10 +548,45 @@ def analyze_context(
             except Exception:
                 traceback.print_exc()
                 results[name] = None
+                failed_modules.append(name)
+
+        # === FIX v15.27: fail-closed ===
+        # Antes, un módulo caído quedaba en None → _get_score(None) = 0.0
+        # y "votaba" riesgo cero con su peso intacto. Un fallo del motor
+        # se presentaba como "bajo riesgo" (ETHICS: no fabricar resultados).
+        failed_weighted = [m for m in failed_modules if m in BASE_WEIGHTS]
+
+        if len(failed_weighted) > MAX_FAILED_MODULES:
+            return {
+                "score": None,
+                "level": "error",
+                "message": "Análisis no disponible",
+                "insight": (
+                    "El motor no pudo completar el análisis de forma "
+                    "confiable. Chenuke se abstiene en vez de mostrar un "
+                    "resultado fabricado. Reintentá en unos segundos."
+                ),
+                "signals": [],
+                "confidence": None,
+                "engine_version": ENGINE_VERSION,
+                "pro": {},
+            }
+
+        # Los módulos caídos no votan: se les quita el peso y se
+        # renormaliza entre los sobrevivientes.
+        if failed_weighted:
+            surviving = {
+                k: v for k, v in weights.items()
+                if k not in failed_weighted
+            }
+            total = sum(surviving.values())
+            if total > 0:
+                weights = {k: v / total for k, v in surviving.items()}
 
         scores = {
             key: _get_score(results[key])
             for key in BASE_WEIGHTS.keys()
+            if key not in failed_weighted
         }
 
         structural_score = sum(
@@ -696,6 +737,19 @@ def analyze_context(
 
         signals = _collect_signals(module_results)
 
+        # Transparencia: si algún módulo no corrió, el usuario lo ve.
+        if failed_weighted:
+            signals.insert(0, {
+                "label": "Análisis parcial",
+                "detail": (
+                    f"{len(failed_weighted)} de {len(BASE_WEIGHTS)} módulos "
+                    "no estuvieron disponibles; el resultado se calculó "
+                    "con los restantes."
+                ),
+                "module": "engine",
+            })
+            signals = signals[:6]
+
         if comm_data.get("level") in ("medio", "alto"):
             signals.append({
                 "label": "Riesgo comercial",
@@ -745,13 +799,13 @@ def analyze_context(
                 "dimensions": {
                     key: {
                         "score": int(scores.get(key, 0) * 100),
-                        "weight": round(weights.get(key, 0.1), 3),
+                        "weight": round(weights.get(key, 0.0), 3),
                         "weighted_contribution": round(
-                            scores.get(key, 0) * weights.get(key, 0.1),
+                            scores.get(key, 0) * weights.get(key, 0.0),
                             4,
                         ),
                     }
-                    for key in BASE_WEIGHTS.keys()
+                    for key in scores.keys()
                 },
                 "signals_by_module": _collect_signals_full(module_results),
                 "commercial_risk": {
@@ -763,20 +817,24 @@ def analyze_context(
             },
         }
 
-    except Exception as e:
+    except Exception:
+        # === FIX v15.27: fail-closed ===
+        # Antes devolvía score 0 + level "medio" (un error disfrazado de
+        # resultado) y filtraba str(e) al cliente. Ahora: level "error",
+        # sin score, sin detalle interno. El traceback va solo a logs.
         traceback.print_exc()
 
         return {
-            "score": 0,
-            "level": "medio",
-            "message": "Error en el motor",
-            "insight": "Ocurrió un error interno durante el análisis. Reintentá en unos segundos.",
-            "signals": [{
-                "label": "engine_error",
-                "detail": str(e),
-                "module": "engine",
-            }],
-            "confidence": 0,
+            "score": None,
+            "level": "error",
+            "message": "Análisis no disponible",
+            "insight": (
+                "Ocurrió un error interno durante el análisis. Chenuke se "
+                "abstiene en vez de mostrar un resultado fabricado. "
+                "Reintentá en unos segundos."
+            ),
+            "signals": [],
+            "confidence": None,
             "engine_version": ENGINE_VERSION,
             "pro": {},
         }
