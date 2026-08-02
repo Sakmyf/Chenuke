@@ -211,10 +211,199 @@ document.addEventListener("DOMContentLoaded", async () => {
     const proWarning = document.getElementById("proWarning");
     const proMetrics = document.getElementById("proMetrics");
     const proList = document.getElementById("proList");
+    const proBreakdown = document.getElementById("proBreakdown");
+    const proDimList = document.getElementById("proDimList");
+    const proSignals = document.getElementById("proSignals");
+    const proSignalList = document.getElementById("proSignalList");
 
     const errorBox = document.getElementById("errorBox");
     const errorMessage = document.getElementById("errorMessage");
     const retryErrorBtn = document.getElementById("retryErrorBtn");
+
+    // ==========================================================
+    // BLOQUE PRO: desglose por módulo + señales con cita textual
+    // Es lo que index.html vende explícitamente. El backend ya lo
+    // manda en analysis.pro; acá se renderiza.
+    // Los normalizadores toleran que el payload venga como objeto
+    // {modulo: {...}} o como array [{module: "..."}]: si el motor
+    // cambia de forma, el bloque se oculta en vez de romper la UI.
+    // ==========================================================
+
+    function toNumber(v) {
+        return typeof v === "number" && isFinite(v) ? v : null;
+    }
+
+    function clampPct(n) {
+        return Math.max(0, Math.min(100, Math.round(n)));
+    }
+
+    // engine.py → pro.dimensions:
+    //   { modulo: { score: 0-100 int, weight: 0-1 float, weighted_contribution: float } }
+    function normalizeDimensions(dims) {
+        const out = [];
+        if (!dims || typeof dims !== "object" || Array.isArray(dims)) return out;
+
+        Object.entries(dims).forEach(([name, v]) => {
+            if (!v || typeof v !== "object") return;
+            const score = toNumber(v.score);
+            const weight = toNumber(v.weight);
+            const contrib = toNumber(v.weighted_contribution);
+            out.push({
+                name: String(name),
+                score: score === null ? null : clampPct(score),
+                weightPct: weight === null ? null : clampPct(weight * 100),
+                contrib: contrib
+            });
+        });
+
+        // Orden por aporte real al índice: lo que más pesó, arriba.
+        return out.sort((a, b) => (b.contrib ?? 0) - (a.contrib ?? 0));
+    }
+
+    // engine.py → pro.signals_by_module:
+    //   { modulo: { score: 0-100 int, signals: [ { label, evidence } ] } }
+    // Fallback: analysis.signals (plano) → [ { label, detail, module } ]
+    function normalizeModuleSignals(sbm) {
+        const out = [];
+        if (!sbm) return out;
+
+        // Forma plana (fallback)
+        if (Array.isArray(sbm)) {
+            sbm.forEach((s) => {
+                if (!s || typeof s !== "object" || !s.label) return;
+                out.push({
+                    module: String(s.module || "—"),
+                    label: String(s.label),
+                    detail: String(s.detail || s.evidence || "")
+                });
+            });
+            return out;
+        }
+
+        if (typeof sbm !== "object") return out;
+
+        Object.entries(sbm).forEach(([mod, block]) => {
+            if (!block || typeof block !== "object") return;
+            const list = Array.isArray(block.signals) ? block.signals : [];
+            list.forEach((s) => {
+                if (!s || typeof s !== "object" || !s.label) return;
+                out.push({
+                    module: String(mod),
+                    label: String(s.label),
+                    detail: String(s.evidence || s.detail || "")
+                });
+            });
+        });
+        return out;
+    }
+
+    function renderDimensions(dims) {
+        if (!proBreakdown || !proDimList) return;
+        proDimList.innerHTML = "";
+
+        const rows = normalizeDimensions(dims);
+        if (!rows.length) {
+            proBreakdown.classList.add("hidden");
+            return;
+        }
+
+        const maxContrib = rows.reduce((m, r) => Math.max(m, r.contrib ?? 0), 0);
+
+        rows.forEach((r) => {
+            const scorePct = r.score;
+            const weightPct = r.weightPct;
+            const rel = maxContrib > 0
+                ? Math.round(((r.contrib ?? 0) / maxContrib) * 100)
+                : 0;
+
+            const li = document.createElement("li");
+            li.className = "dim-row";
+
+            const head = document.createElement("div");
+            head.className = "dim-head";
+
+            const name = document.createElement("span");
+            name.className = "dim-name";
+            name.textContent = r.name;
+
+            const score = document.createElement("span");
+            score.className = "dim-score";
+            score.textContent = scorePct === null ? "—" : scorePct + "%";
+
+            head.appendChild(name);
+            head.appendChild(score);
+
+            const bar = document.createElement("div");
+            bar.className = "dim-bar";
+            const fill = document.createElement("div");
+            fill.className = "dim-fill";
+            fill.style.width = rel + "%";
+            // En los módulos del motor, score alto = más señal de riesgo.
+            // (obtenerColorPorcentaje solo conoce las 4 métricas resumidas.)
+            if (scorePct !== null) {
+                fill.style.background =
+                    scorePct > 70 ? "#ef4444" :
+                    scorePct > 40 ? "#facc15" :
+                    scorePct > 10 ? "#4ade80" : "#64748b";
+            }
+            bar.appendChild(fill);
+
+            li.appendChild(head);
+            li.appendChild(bar);
+
+            if (weightPct !== null || r.contrib !== null) {
+                const meta = document.createElement("div");
+                meta.className = "dim-meta";
+                const parts = [];
+                if (weightPct !== null) parts.push("peso " + weightPct + "%");
+                if (r.contrib !== null) parts.push("aporte " + (Math.round(r.contrib * 1000) / 1000));
+                meta.textContent = parts.join(" · ");
+                li.appendChild(meta);
+            }
+
+            proDimList.appendChild(li);
+        });
+
+        proBreakdown.classList.remove("hidden");
+    }
+
+    function renderModuleSignals(sbm) {
+        if (!proSignals || !proSignalList) return;
+        proSignalList.innerHTML = "";
+
+        const rows = normalizeModuleSignals(sbm);
+        if (!rows.length) {
+            proSignals.classList.add("hidden");
+            return;
+        }
+
+        rows.forEach((s) => {
+            const row = document.createElement("div");
+            row.className = "sig-row";
+
+            const mod = document.createElement("span");
+            mod.className = "sig-mod";
+            mod.textContent = s.module;
+
+            const label = document.createElement("span");
+            label.className = "sig-label";
+            label.textContent = s.label;
+
+            row.appendChild(mod);
+            row.appendChild(label);
+
+            if (s.detail) {
+                const detail = document.createElement("span");
+                detail.className = "sig-detail";
+                detail.textContent = s.detail;
+                row.appendChild(detail);
+            }
+
+            proSignalList.appendChild(row);
+        });
+
+        proSignals.classList.remove("hidden");
+    }
 
     // Botón IA
     async function runAIAnalysis() {
@@ -446,6 +635,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (scoreEl) scoreEl.textContent = "--";
         if (confEl) confEl.textContent = "--";
         if (proList) proList.innerHTML = "";
+        if (proDimList) proDimList.innerHTML = "";
+        if (proSignalList) proSignalList.innerHTML = "";
+        if (proBreakdown) proBreakdown.classList.add("hidden");
+        if (proSignals) proSignals.classList.add("hidden");
         if (cacheBadge) cacheBadge.classList.add("hidden");
         if (clearCacheBtn) clearCacheBtn.classList.add("hidden");
     }
@@ -810,6 +1003,8 @@ document.addEventListener("DOMContentLoaded", async () => {
                 upgradeBtn.style.display = "none";
             }
             if (proMetrics) proMetrics.classList.add("hidden");
+            if (proBreakdown) proBreakdown.classList.add("hidden");
+            if (proSignals) proSignals.classList.add("hidden");
         } else {
             if (proSection) proSection.classList.remove("locked");
             if (proWarning) proWarning.style.display = "none";
@@ -846,6 +1041,14 @@ document.addEventListener("DOMContentLoaded", async () => {
                     proList.appendChild(li);
                 }
             }
+
+            // Desglose por módulo y señales con cita textual.
+            // Si el motor no los mandó (o vinieron vacíos), los bloques
+            // quedan ocultos: nunca se muestra una sección vacía como si
+            // fuera un entregable.
+            const proBlock = analysis.pro || {};
+            renderDimensions(proBlock.dimensions);
+            renderModuleSignals(proBlock.signals_by_module || analysis.signals);
         }
 
         updateAIButton(userPlan);
