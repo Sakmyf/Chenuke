@@ -417,6 +417,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
 
         const originalText = aiBtnText.textContent;
+
+        // El prompt del informe IA está anclado al nivel del motor (regla 6
+        // del gate ETHICS). Sin análisis previo, `lastResult` es null, el
+        // backend recibe heuristic:null y devuelve 422 ("Input should be a
+        // valid dictionary"). Mandar {} sería peor: la IA escribiría sin
+        // ancla, que es justo lo que el gate impide.
+        if (!lastResult || typeof lastResult !== "object" || lastResult.score === null || lastResult.score === undefined) {
+            showError("Analizá la página antes de generar el informe con IA.");
+            return;
+        }
+
         aiBtnText.textContent = "⏳ Generando informe...";
         aiBtn.disabled = true;
 
@@ -436,7 +447,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                     text: extracted.text,
                     title: extracted.title || tab.title || "",
                     url: extracted.url || tab.url,
-                    heuristic: lastResult
+                    heuristic: lastResult && typeof lastResult === "object" ? lastResult : {}
                 })
             }, AI_TIMEOUT);
 

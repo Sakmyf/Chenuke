@@ -141,7 +141,11 @@ except Exception as e:
     ENGINE_AVAILABLE = False
     ENGINE_VERSION = _ENGINE_VERSION_FALLBACK
     def analyze_context(text, url, title=""):
-        return {"score": 50, "level": "yellow", "message": "Engine no disponible (fallback)", "signals": [], "confidence": 0.5, "pro": {}}
+        # Fail-closed: si el engine no importo, NO se inventa un resultado
+        # (antes: score 50 / "yellow" / confianza 0.5 con el motor muerto).
+        # level "error" -> el popup pinta "Analisis no disponible" y el
+        # guard de heuristic bloquea el informe IA (score None).
+        return {"score": None, "level": "error", "message": "Análisis no disponible", "signals": [], "confidence": None, "pro": {}}
 
 try:
     from backend.content_filter import is_explicit_content
@@ -517,7 +521,9 @@ def build_response(result: dict, analysis_key: str, plan: str, cached: bool = Fa
     raw_score = result.get("score", 0)
     analysis_data = {
         "structural_index": int(raw_score) if raw_score is not None else None,
-        "level": result.get("level", "yellow"),
+        # `or "error"`: cubre clave ausente Y level=None explicito.
+        # Un motor mudo se declara, no vota "medio" por default.
+        "level": result.get("level") or "error",
         "message": result.get("message", "Análisis completado"),
         "signals": result.get("signals", []),
         "confidence": float(result.get("confidence")) if result.get("confidence") is not None else None,
