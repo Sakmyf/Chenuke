@@ -180,64 +180,11 @@ function updateAIButton(plan) {
 
 // ======================================================
 // ANÁLISIS CON IA (DEEPSEEK)
+// runAIAnalysis vive DENTRO de DOMContentLoaded: necesita
+// extractPageContent / fetchWithTimeout / showError, que están
+// en ese scope. (Fix v0.5.2: definirla acá causaba ReferenceError
+// silencioso al clickear "Analizar con IA".)
 // ======================================================
-
-async function runAIAnalysis() {
-    const userPlan = lastResult?.meta?.plan || extensionPlan || "free";
-    const aiBtn = document.getElementById("aiAnalyzeBtn");
-    const aiBtnText = document.getElementById("aiBtnText");
-
-    if (userPlan === "free") {
-        chrome.tabs.create({ url: "https://chenuke.com/#planes" });
-        return;
-    }
-
-    const originalText = aiBtnText.textContent;
-    aiBtnText.textContent = "⏳ Generando informe...";
-    aiBtn.disabled = true;
-
-    try {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        const extracted = await extractPageContent(tab);
-
-        if (!extracted || !extracted.ok || !extracted.text) {
-            showError("No se pudo extraer el contenido de la página");
-            return;
-        }
-
-        const response = await fetchWithTimeout(CHAT_API_URL, {
-            method: "POST",
-            headers: await buildHeaders(),
-            body: JSON.stringify({
-                text: extracted.text,
-                title: extracted.title || tab.title || "",
-                url: extracted.url || tab.url,
-                heuristic: lastResult
-            })
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || `Error ${response.status}`);
-        }
-
-        const data = await response.json();
-        showAIReport(data.report, data.model);
-
-    } catch (err) {
-        console.error("❌ Error en análisis IA:", err);
-        showError(`Error generando informe: ${err.message}`);
-    } finally {
-        aiBtnText.textContent = originalText;
-        aiBtn.disabled = false;
-    }
-}
-
-function showAIReport(report, model) {
-    const encoded = encodeURIComponent(report);
-    const url = `https://chenuke.com/ia-report.html?report=${encoded}`;
-    chrome.tabs.create({ url });
-}
 
 // ======================================================
 // FUNCIONES EXISTENTES (continuación)
@@ -266,6 +213,63 @@ document.addEventListener("DOMContentLoaded", async () => {
     const retryErrorBtn = document.getElementById("retryErrorBtn");
 
     // Botón IA
+    async function runAIAnalysis() {
+        const userPlan = lastResult?.meta?.plan || extensionPlan || "free";
+        const aiBtn = document.getElementById("aiAnalyzeBtn");
+        const aiBtnText = document.getElementById("aiBtnText");
+
+        if (userPlan === "free") {
+            chrome.tabs.create({ url: "https://chenuke.com/#planes" });
+            return;
+        }
+
+        const originalText = aiBtnText.textContent;
+        aiBtnText.textContent = "⏳ Generando informe...";
+        aiBtn.disabled = true;
+
+        try {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            const extracted = await extractPageContent(tab);
+
+            if (!extracted || !extracted.ok || !extracted.text) {
+                showError("No se pudo extraer el contenido de la página");
+                return;
+            }
+
+            const response = await fetchWithTimeout(CHAT_API_URL, {
+                method: "POST",
+                headers: await buildHeaders(),
+                body: JSON.stringify({
+                    text: extracted.text,
+                    title: extracted.title || tab.title || "",
+                    url: extracted.url || tab.url,
+                    heuristic: lastResult
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || `Error ${response.status}`);
+            }
+
+            const data = await response.json();
+            showAIReport(data.report, data.model);
+
+        } catch (err) {
+            console.error("❌ Error en análisis IA:", err);
+            showError(`Error generando informe: ${err.message}`);
+        } finally {
+            aiBtnText.textContent = originalText;
+            aiBtn.disabled = false;
+        }
+    }
+
+    function showAIReport(report, model) {
+        const encoded = encodeURIComponent(report);
+        const url = `https://chenuke.com/ia-report.html?report=${encoded}`;
+        chrome.tabs.create({ url });
+    }
+
     const aiAnalyzeBtn = document.getElementById("aiAnalyzeBtn");
     if (aiAnalyzeBtn) {
         aiAnalyzeBtn.addEventListener("click", runAIAnalysis);
