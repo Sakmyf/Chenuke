@@ -7,6 +7,13 @@ const ANALYSIS_CACHE_PREFIX = "analysis_";
 const CACHE_MAX_AGE = 24 * 60 * 60 * 1000;
 const API_URL = "https://chenuke-production-8e78.up.railway.app/v3/verify";
 const REGISTER_URL = "https://chenuke-production-8e78.up.railway.app/v3/register";
+const ACTIVATE_URL = "https://chenuke-production-8e78.up.railway.app/v3/activate";
+
+// Revalidación de licencia: cada 12 h reconfirmamos contra Lemon (vía backend)
+// que la suscripción sigue vigente. Refleja cancelaciones/expiraciones sin
+// depender del webhook. Fail-open: solo un 403 explícito revoca.
+const LICENSE_REVALIDATE_ALARM = "license_revalidate";
+const LICENSE_REVALIDATE_INTERVAL = 12 * 60; // minutos
 
 // --- REGISTRO DE EXTENSIÓN (al instalarse/actualizarse) ---
 async function registerExtension() {
@@ -33,6 +40,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
         console.log("⏰ Ejecutando mantenimiento programado...");
         cleanOldCache();
     }
+    if (alarm.name === LICENSE_REVALIDATE_ALARM) {
+        console.log("🔐 Revalidando licencia...");
+        revalidateLicense();
+    }
 });
 
 function setupAlarms() {
@@ -42,6 +53,14 @@ function setupAlarms() {
                 periodInMinutes: MAINTENANCE_INTERVAL
             });
             console.log("⏰ Alarma de mantenimiento creada");
+        }
+    });
+    chrome.alarms.get(LICENSE_REVALIDATE_ALARM, (existing) => {
+        if (!existing) {
+            chrome.alarms.create(LICENSE_REVALIDATE_ALARM, {
+                periodInMinutes: LICENSE_REVALIDATE_INTERVAL
+            });
+            console.log("🔐 Alarma de revalidación de licencia creada");
         }
     });
 }
@@ -59,6 +78,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 chrome.runtime.onStartup.addListener(() => {
     console.log("🚀 Chenuke: Navegador iniciado");
     setupAlarms();
+    revalidateLicense();
 });
 
 // --- LIMPIEZA DE CACHÉ ---
@@ -131,6 +151,67 @@ async function buildHeaders() {
         }
     } catch (e) {}
     return headers;
+}
+
+// --- REVALIDACIÓN DE LICENCIA ---
+// Reenvía la license_key guardada a /v3/activate. El backend, en modo
+// reactivación, la revalida contra Lemon y:
+//   - si sigue vigente → 200 con pro_token (lo reafirmamos)
+//   - si Lemon la reporta cancelada/expirada → 403 (el backend YA revocó su
+//     fila) → limpiamos el estado local
+// REGLA CLAVE (fail-open): SOLO un 403 revoca. Un error de red o un 5xx NO
+// tocan el token: no le cortamos el acceso a un pagador por un backend caído.
+async function revalidateLicense() {
+    let stored;
+    try {
+        stored = await chrome.storage.local.get(["license_key", "pro_token", "extension_plan"]);
+    } catch (e) {
+        return { transient: true };
+    }
+
+    // Nada que revalidar si no hay plan pago con key guardada.
+    if (!stored.license_key || !stored.pro_token) return { skipped: true };
+    if (stored.extension_plan !== "pro" && stored.extension_plan !== "premium") {
+        return { skipped: true };
+    }
+
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        const res = await fetch(ACTIVATE_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ license_key: stored.license_key }),
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        const data = await res.json().catch(() => ({}));
+
+        if (res.status === 403) {
+            // Lemon reporta la licencia como no vigente. El backend ya la revocó.
+            await chrome.storage.local.remove(["pro_token", "license_key", "extension_plan"]);
+            await chrome.storage.local.set({ license_last_check: Date.now() });
+            console.log("🔒 Licencia revocada tras revalidación");
+            return { revoked: true };
+        }
+
+        if (res.ok && data.pro_token) {
+            // Sigue vigente. Reafirmamos token/plan (por si cambió el plan) y marca de tiempo.
+            await chrome.storage.local.set({
+                pro_token: data.pro_token,
+                extension_plan: data.plan || stored.extension_plan,
+                license_last_check: Date.now()
+            });
+            return { ok: true, plan: data.plan || stored.extension_plan };
+        }
+
+        // Cualquier otro estado (5xx, respuesta inesperada) = transitorio: NO revocar.
+        return { transient: true, status: res.status };
+    } catch (e) {
+        // Red caída / timeout: transitorio. NO revocar.
+        return { transient: true, error: String(e && e.message) };
+    }
 }
 
 // --- NOTIFICACIONES ---
@@ -211,6 +292,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         cleanOldCache().then(() => {
             sendResponse({ cleared: true });
         });
+        return true;
+    }
+    if (message.type === "REVALIDATE_LICENSE") {
+        revalidateLicense().then((r) => sendResponse(r || { transient: true }));
         return true;
     }
 });

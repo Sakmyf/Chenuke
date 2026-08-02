@@ -15,6 +15,9 @@ const AI_TIMEOUT = 60000;
 const MAX_RETRIES = 2;
 const CACHE_TTL = 30000;
 const RETRY_HTTP_STATUS = [502, 503, 504];
+// Al abrir el popup, si pasó este tiempo desde la última revalidación de
+// licencia, disparamos una nueva contra el service worker (que decide).
+const REVALIDATE_THROTTLE_MS = 12 * 60 * 60 * 1000;
 
 let lastResult = null;
 let extensionPlan = "free";
@@ -166,15 +169,35 @@ function obtenerColorPorcentaje(valor, metrica) {
 // ACTUALIZAR BOTÓN DE IA SEGÚN PLAN
 // ======================================================
 
+// El score real vive en lastResult.analysis.structural_index
+// (la respuesta de /v3/verify: { analysis: {...}, meta: {...} }).
+// level error/insuficiente/skipped no tienen score → no hay ancla
+// para el informe IA.
+function hasValidResult() {
+    const idx = lastResult?.analysis?.structural_index;
+    return typeof idx === "number" && isFinite(idx);
+}
+
 function updateAIButton(plan) {
     const aiBtnText = document.getElementById("aiBtnText");
     const aiBtn = document.getElementById("aiAnalyzeBtn");
     if (!aiBtnText || !aiBtn) return;
 
     if (plan === "pro" || plan === "premium") {
-        aiBtnText.textContent = "🤖 Analizar con IA";
-        aiBtn.disabled = false;
-        aiBtn.style.opacity = "1";
+        // El informe IA está anclado al motor (gate ETHICS regla 6):
+        // sin un análisis con score real, no hay nada que redactar.
+        // Se atenúa en vez de ofrecer algo que va a terminar en error.
+        if (hasValidResult()) {
+            aiBtnText.textContent = "🤖 Analizar con IA";
+            aiBtn.disabled = false;
+            aiBtn.style.opacity = "1";
+            aiBtn.title = "";
+        } else {
+            aiBtnText.textContent = "🤖 Analizar con IA";
+            aiBtn.disabled = true;
+            aiBtn.style.opacity = "0.45";
+            aiBtn.title = "Primero analizá la página";
+        }
     } else {
         aiBtnText.textContent = "🔒 Actualizar a PRO";
         aiBtn.disabled = false;
@@ -419,11 +442,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         const originalText = aiBtnText.textContent;
 
         // El prompt del informe IA está anclado al nivel del motor (regla 6
-        // del gate ETHICS). Sin análisis previo, `lastResult` es null, el
-        // backend recibe heuristic:null y devuelve 422 ("Input should be a
-        // valid dictionary"). Mandar {} sería peor: la IA escribiría sin
-        // ancla, que es justo lo que el gate impide.
-        if (!lastResult || typeof lastResult !== "object" || lastResult.score === null || lastResult.score === undefined) {
+        // del gate ETHICS). Sin análisis previo válido, el backend recibiría
+        // heuristic:null → 422 ("Input should be a valid dictionary").
+        // Mandar {} sería peor: la IA escribiría sin ancla.
+        if (!hasValidResult()) {
             showError("Analizá la página antes de generar el informe con IA.");
             return;
         }
@@ -556,9 +578,13 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
             proToken = data.pro_token;
             extensionPlan = data.plan || "pro";
+            // Guardamos la license_key para poder revalidarla luego (revocación
+            // por cancelación). license_last_check evita revalidar de más.
             await chrome.storage.local.set({
                 pro_token: proToken,
-                extension_plan: extensionPlan
+                extension_plan: extensionPlan,
+                license_key: key,
+                license_last_check: Date.now()
             });
             return { ok: true, plan: extensionPlan, limit: data.analyses_limit };
         } catch (err) {
@@ -610,6 +636,43 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     refreshActivationUI();
+
+    // --- Revalidación de licencia al abrir (con throttle) ---
+    // Si el plan es pago y pasó el throttle, le pedimos al service worker que
+    // revalide contra Lemon. El worker decide: solo un 403 revoca. Acá solo
+    // reflejamos su resultado en la UI. Best-effort, no bloquea nada.
+    (async () => {
+        try {
+            if (extensionPlan !== "pro" && extensionPlan !== "premium") return;
+            const st = await chrome.storage.local.get(["license_key", "license_last_check"]);
+            if (!st.license_key) return; // activación previa sin key guardada
+            const age = Date.now() - (st.license_last_check || 0);
+            if (age < REVALIDATE_THROTTLE_MS) return;
+
+            const result = await new Promise((resolve) => {
+                chrome.runtime.sendMessage({ type: "REVALIDATE_LICENSE" }, (resp) => {
+                    if (chrome.runtime.lastError) return resolve(null);
+                    resolve(resp || null);
+                });
+            });
+            if (!result) return;
+
+            if (result.revoked) {
+                extensionPlan = "free";
+                proToken = null;
+                setActivateStatus(
+                    "Tu licencia ya no está activa. Ingresá una clave vigente para reactivar.",
+                    "error"
+                );
+                updateAIButton(extensionPlan);
+                refreshActivationUI();
+            } else if (result.ok && result.plan && result.plan !== extensionPlan) {
+                extensionPlan = result.plan;
+                updateAIButton(extensionPlan);
+                refreshActivationUI();
+            }
+        } catch (e) { /* best-effort */ }
+    })();
 
     function showError(message) {
         if (labelBadge) {
@@ -781,6 +844,10 @@ document.addEventListener("DOMContentLoaded", async () => {
             if (!force) {
                 const cached = await getCachedResult(tab.url);
                 if (cached) {
+                    // Restaurar lastResult: sin esto, con un resultado cacheado
+                    // en pantalla el botón IA quedaba deshabilitado y el guard
+                    // de heuristic bloqueaba el informe.
+                    lastResult = cached;
                     renderResult(cached, true);
                     stopScanUI();
                     return;
