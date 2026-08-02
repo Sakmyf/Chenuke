@@ -252,8 +252,20 @@ document.addEventListener("DOMContentLoaded", async () => {
             }, AI_TIMEOUT);
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.detail || `Error ${response.status}`);
+                let detail = `Error ${response.status}`;
+                try {
+                    const errBody = await response.json();
+                    const d = errBody?.detail;
+                    if (typeof d === "string") {
+                        detail = d;
+                    } else if (Array.isArray(d)) {
+                        // 422 de FastAPI: detail es un array de objetos
+                        detail = d.map(e => e?.msg || JSON.stringify(e)).join(" · ");
+                    } else if (d) {
+                        detail = JSON.stringify(d);
+                    }
+                } catch (_) { /* respuesta sin JSON: queda el código */ }
+                throw new Error(detail);
             }
 
             const data = await response.json();
