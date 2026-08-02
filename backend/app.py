@@ -1210,6 +1210,8 @@ y debés reportarla.
         saved = await loop.run_in_executor(
             _executor, _save_ai_report, report_key, report_text, model, heuristic_snapshot
         )
+        if not saved:
+            logger.error("Informe generado pero NO guardado en ai_reports — revisar tabla/columnas")
 
         response_data = {
             "status": "success",

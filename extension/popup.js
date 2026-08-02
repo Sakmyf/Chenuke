@@ -8,6 +8,10 @@ const REGISTER_URL = "https://chenuke-production-8e78.up.railway.app/v3/register
 const ACTIVATE_URL = "https://chenuke-production-8e78.up.railway.app/v3/activate";
 
 const API_TIMEOUT = 30000;
+// El informe IA tarda más que un análisis heurístico: el modelo razona
+// antes de escribir. Debe ser mayor que el timeout del backend (45s)
+// o el popup aborta una request que iba a completarse bien.
+const AI_TIMEOUT = 60000;
 const MAX_RETRIES = 2;
 const CACHE_TTL = 30000;
 const RETRY_HTTP_STATUS = [502, 503, 504];
@@ -245,7 +249,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                     url: extracted.url || tab.url,
                     heuristic: lastResult
                 })
-            });
+            }, AI_TIMEOUT);
 
             if (!response.ok) {
                 const error = await response.json();
@@ -257,7 +261,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         } catch (err) {
             console.error("❌ Error en análisis IA:", err);
-            showError(`Error generando informe: ${err.message}`);
+            const msg = (err && err.name === "AbortError")
+                ? "El informe tardó demasiado. Reintentá en unos segundos."
+                : `Error generando informe: ${err.message}`;
+            showError(msg);
         } finally {
             aiBtnText.textContent = originalText;
             aiBtn.disabled = false;
@@ -463,9 +470,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     }
 
-    async function fetchWithTimeout(url, options) {
+    async function fetchWithTimeout(url, options, timeoutMs) {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs || API_TIMEOUT);
         try {
             const res = await fetch(url, { ...options, signal: controller.signal });
             clearTimeout(timeoutId);
