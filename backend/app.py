@@ -8,7 +8,7 @@ import secrets
 import urllib.request
 import urllib.parse
 import urllib.error
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from functools import lru_cache
 from typing import Optional, Dict, Any
 from contextlib import asynccontextmanager
@@ -287,13 +287,62 @@ _key_locks: Dict[str, asyncio.Lock] = {}
 _key_locks_mutex = asyncio.Lock()
 
 # ============================================================
+# RETENCIÓN DE LOGS (privacidad.html §6: depuración periódica)
+# ============================================================
+LOG_RETENTION_DAYS = int(os.getenv("LOG_RETENTION_DAYS", "90"))
+_RETENTION_INTERVAL_S = 24 * 60 * 60  # corre una vez por día
+
+
+def _purge_old_logs() -> int:
+    """Borra logs de análisis más viejos que LOG_RETENTION_DAYS. Devuelve cantidad."""
+    if not DB_AVAILABLE:
+        return 0
+    db = SessionLocal()
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=LOG_RETENTION_DAYS)
+        deleted = (
+            db.query(AnalysisLog)
+            .filter(AnalysisLog.timestamp < cutoff)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        return int(deleted or 0)
+    except Exception as e:
+        db.rollback()
+        logger.warning(f"Purga de logs falló: {e}")
+        return 0
+    finally:
+        db.close()
+
+
+async def _retention_loop():
+    """Tarea de fondo: purga diaria. Idempotente entre workers."""
+    while True:
+        try:
+            loop = asyncio.get_event_loop()
+            deleted = await loop.run_in_executor(_executor, _purge_old_logs)
+            if deleted:
+                logger.info(
+                    "Retención de logs ejecutada",
+                    extra={"extra": {"deleted": deleted, "retention_days": LOG_RETENTION_DAYS}},
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"Retention loop error: {e}")
+        await asyncio.sleep(_RETENTION_INTERVAL_S)
+
+
+# ============================================================
 # LIFECYCLE
 # ============================================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_redis()
+    retention_task = asyncio.create_task(_retention_loop())
     logger.info("Chenuke API iniciada", extra={"extra": {"version": ENGINE_VERSION, "dev_mode": DEV_MODE}})
     yield
+    retention_task.cancel()
     if redis_client:
         await redis_client.close()
     _executor.shutdown(wait=True)
