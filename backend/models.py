@@ -76,6 +76,7 @@ class AIReport(Base):
     report_key = Column(String(64), unique=True, index=True, nullable=False)
     report_text = Column(Text, nullable=False)
     model = Column(String(40), nullable=True)
+    heuristic_json = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow, index=True)
 
     def __repr__(self) -> str:

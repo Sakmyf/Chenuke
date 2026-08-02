@@ -294,12 +294,17 @@ _key_locks_mutex = asyncio.Lock()
 AI_REPORT_RETENTION_DAYS = int(os.getenv("AI_REPORT_RETENTION_DAYS", "30"))
 
 
-def _save_ai_report(report_key: str, report_text: str, model: str) -> bool:
+def _save_ai_report(report_key: str, report_text: str, model: str, heuristic_json: str = None) -> bool:
     if not DB_AVAILABLE:
         return False
     db = SessionLocal()
     try:
-        db.add(AIReport(report_key=report_key, report_text=report_text, model=model))
+        db.add(AIReport(
+            report_key=report_key,
+            report_text=report_text,
+            model=model,
+            heuristic_json=heuristic_json,
+        ))
         db.commit()
         return True
     except Exception as e:
@@ -316,13 +321,20 @@ def _get_ai_report(report_key: str):
     db = SessionLocal()
     try:
         row = db.query(AIReport).filter(AIReport.report_key == report_key).first()
-        if row:
-            return {
-                "report": row.report_text,
-                "model": row.model,
-                "created_at": row.created_at.isoformat() if row.created_at else None,
-            }
-        return None
+        if not row:
+            return None
+        heuristic = None
+        if row.heuristic_json:
+            try:
+                heuristic = json.loads(row.heuristic_json)
+            except Exception:
+                heuristic = None
+        return {
+            "report": row.report_text,
+            "model": row.model,
+            "heuristic": heuristic,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
     except Exception as e:
         logger.warning(f"Lectura de informe IA falló: {e}")
         return None
@@ -1174,7 +1186,30 @@ y debés reportarla.
         # (nunca viaja el contenido por URL).
         report_key = secrets.token_urlsafe(24)
         loop = asyncio.get_event_loop()
-        saved = await loop.run_in_executor(_executor, _save_ai_report, report_key, report_text, model)
+
+        # Se guarda también lo que calculó el motor: el informe muestra
+        # las dos capas (dato determinístico + explicación de la IA).
+        heuristic_snapshot = None
+        try:
+            h = req.heuristic or {}
+            a = h.get("analysis", h) or {}
+            heuristic_snapshot = json.dumps({
+                "structural_index": a.get("structural_index"),
+                "level": a.get("level"),
+                "confidence": a.get("confidence"),
+                "signals": [
+                    {"label": s.get("label"), "detail": s.get("detail"), "module": s.get("module")}
+                    for s in (a.get("signals") or [])[:6]
+                ],
+                "title": req.title or "",
+                "url": req.url or "",
+            }, ensure_ascii=False)
+        except Exception:
+            heuristic_snapshot = None
+
+        saved = await loop.run_in_executor(
+            _executor, _save_ai_report, report_key, report_text, model, heuristic_snapshot
+        )
 
         response_data = {
             "status": "success",
