@@ -253,7 +253,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
 
             const data = await response.json();
-            showAIReport(data.report, data.model);
+            showAIReport(data);
 
         } catch (err) {
             console.error("❌ Error en análisis IA:", err);
@@ -264,10 +264,15 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     }
 
-    function showAIReport(report, model) {
-        const encoded = encodeURIComponent(report);
-        const url = `https://chenuke.com/ia-report.html?report=${encoded}`;
-        chrome.tabs.create({ url });
+    function showAIReport(data) {
+        // El informe viaja por ID (report_key), nunca por URL:
+        // las URLs largas se cortaban en el servidor y el contenido
+        // por query string permitía fabricar informes truchos.
+        if (data && data.report_key) {
+            chrome.tabs.create({ url: `https://chenuke.com/ia-report.html?k=${encodeURIComponent(data.report_key)}` });
+        } else {
+            showError("El informe se generó pero no pudo guardarse. Reintentá en unos segundos.");
+        }
     }
 
     const aiAnalyzeBtn = document.getElementById("aiAnalyzeBtn");

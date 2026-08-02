@@ -66,6 +66,23 @@ class AnalysisLog(Base):
 
 
 # ---------------------------------------------------------------------------
+# AIReport — informes IA servidos por ID (cierra fabricación por URL)
+# ---------------------------------------------------------------------------
+
+class AIReport(Base):
+    __tablename__ = "ai_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    report_key = Column(String(64), unique=True, index=True, nullable=False)
+    report_text = Column(Text, nullable=False)
+    model = Column(String(40), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, index=True)
+
+    def __repr__(self) -> str:
+        return f"<AIReport id={self.id} key={self.report_key!r}>"
+
+
+# ---------------------------------------------------------------------------
 # Extension (mejorado)
 # ---------------------------------------------------------------------------
 

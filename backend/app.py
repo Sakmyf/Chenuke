@@ -151,7 +151,7 @@ except Exception:
 
 try:
     from backend.database import SessionLocal
-    from backend.models import AnalysisLog, Extension
+    from backend.models import AnalysisLog, Extension, AIReport
     DB_AVAILABLE = True
 except Exception:
     DB_AVAILABLE = False
@@ -287,6 +287,50 @@ _key_locks: Dict[str, asyncio.Lock] = {}
 _key_locks_mutex = asyncio.Lock()
 
 # ============================================================
+# INFORMES IA POR ID (v15.27)
+# El informe viaja por ID, no por URL: cierra el vector de
+# fabricación de informes y el límite de largo de query string.
+# ============================================================
+AI_REPORT_RETENTION_DAYS = int(os.getenv("AI_REPORT_RETENTION_DAYS", "30"))
+
+
+def _save_ai_report(report_key: str, report_text: str, model: str) -> bool:
+    if not DB_AVAILABLE:
+        return False
+    db = SessionLocal()
+    try:
+        db.add(AIReport(report_key=report_key, report_text=report_text, model=model))
+        db.commit()
+        return True
+    except Exception as e:
+        db.rollback()
+        logger.warning(f"No se pudo guardar el informe IA: {e}")
+        return False
+    finally:
+        db.close()
+
+
+def _get_ai_report(report_key: str):
+    if not DB_AVAILABLE:
+        return None
+    db = SessionLocal()
+    try:
+        row = db.query(AIReport).filter(AIReport.report_key == report_key).first()
+        if row:
+            return {
+                "report": row.report_text,
+                "model": row.model,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+        return None
+    except Exception as e:
+        logger.warning(f"Lectura de informe IA falló: {e}")
+        return None
+    finally:
+        db.close()
+
+
+# ============================================================
 # RETENCIÓN DE LOGS (privacidad.html §6: depuración periódica)
 # ============================================================
 LOG_RETENTION_DAYS = int(os.getenv("LOG_RETENTION_DAYS", "90"))
@@ -294,15 +338,20 @@ _RETENTION_INTERVAL_S = 24 * 60 * 60  # corre una vez por día
 
 
 def _purge_old_logs() -> int:
-    """Borra logs de análisis más viejos que LOG_RETENTION_DAYS. Devuelve cantidad."""
+    """Borra logs de análisis e informes IA viejos. Devuelve cantidad total."""
     if not DB_AVAILABLE:
         return 0
     db = SessionLocal()
     try:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=LOG_RETENTION_DAYS)
+        now = datetime.now(timezone.utc)
         deleted = (
             db.query(AnalysisLog)
-            .filter(AnalysisLog.timestamp < cutoff)
+            .filter(AnalysisLog.timestamp < now - timedelta(days=LOG_RETENTION_DAYS))
+            .delete(synchronize_session=False)
+        )
+        deleted += (
+            db.query(AIReport)
+            .filter(AIReport.created_at < now - timedelta(days=AI_REPORT_RETENTION_DAYS))
             .delete(synchronize_session=False)
         )
         db.commit()
@@ -1090,11 +1139,18 @@ y debés reportarla.
 
         logger.info(f"Informe generado para plan {plan}, modelo {model}, tokens: {response.usage.total_tokens}")
 
+        # Guardar el informe y devolver la clave: la página lo pide por ID
+        # (nunca viaja el contenido por URL).
+        report_key = secrets.token_urlsafe(24)
+        loop = asyncio.get_event_loop()
+        saved = await loop.run_in_executor(_executor, _save_ai_report, report_key, report_text, model)
+
         response_data = {
             "status": "success",
             "plan": plan,
             "model": model,
             "report": report_text,
+            "report_key": report_key if saved else None,
             "usage": {
                 "prompt_tokens": response.usage.prompt_tokens,
                 "completion_tokens": response.usage.completion_tokens,
@@ -1119,3 +1175,23 @@ y debés reportarla.
     except Exception as e:
         logger.exception(f"Error en /v3/chat-analysis: {e}")
         raise HTTPException(500, "Error generando el informe. Intentá de nuevo en unos segundos.")
+
+# ============================================================
+# GET /v3/report — lectura de informe IA por clave
+# Sin auth de plan: la clave (token_urlsafe de 24 bytes) es
+# inadivinable y solo la recibe quien generó el informe.
+# ============================================================
+@app.get("/v3/report")
+@limiter.limit("30/minute")
+async def get_report(request: Request, k: str = ""):
+    key = (k or "").strip()
+    if not key or len(key) > 64:
+        raise HTTPException(400, "Clave de informe inválida")
+
+    loop = asyncio.get_event_loop()
+    data = await loop.run_in_executor(_executor, _get_ai_report, key)
+
+    if not data:
+        raise HTTPException(404, "Informe no encontrado o expirado")
+
+    return {"status": "success", **data}
