@@ -1129,13 +1129,21 @@ y debés reportarla.
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.7,
-                    max_tokens=800 if plan == "pro" else 1200,
+                    # deepseek-v4-pro es razonador: consume presupuesto en el
+                    # razonamiento interno ANTES de escribir. Con poco margen
+                    # devuelve content vacío. Se le da aire de sobra.
+                    max_tokens=2000 if plan == "pro" else 5000,
                 )
             ),
-            timeout=30.0
+            timeout=45.0
         )
 
-        report_text = response.choices[0].message.content
+        report_text = (response.choices[0].message.content or "").strip()
+
+        # Guard: un informe vacío NUNca se guarda, cachea ni cobra como éxito.
+        if not report_text:
+            logger.error(f"DeepSeek devolvió contenido vacío (modelo {model}, tokens: {response.usage.total_tokens})")
+            raise HTTPException(502, "La IA no devolvió contenido. Reintentá en unos segundos.")
 
         logger.info(f"Informe generado para plan {plan}, modelo {model}, tokens: {response.usage.total_tokens}")
 
@@ -1172,6 +1180,8 @@ y debés reportarla.
     except asyncio.TimeoutError:
         logger.error(f"Timeout generando informe con {model}")
         raise HTTPException(504, "El servicio de inteligencia artificial no respondió a tiempo")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(f"Error en /v3/chat-analysis: {e}")
         raise HTTPException(500, "Error generando el informe. Intentá de nuevo en unos segundos.")
