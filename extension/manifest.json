@@ -3,7 +3,7 @@
   "name": "Chénuke",
   "version": "0.5.2",
   "description": "Detecta señales estructurales de manipulación, urgencia artificial y promesas desproporcionadas en cualquier página web.",
-  "author": "Grupo Eryma LLC",
+  "author": "Ernesto F. Dominguez",
   "homepage_url": "https://chenuke.com",
   "minimum_chrome_version": "105",
   "action": {

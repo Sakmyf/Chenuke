@@ -697,16 +697,20 @@ async def activate_license(req: ActivateRequest, request: Request):
 
     Flujo:
       1) Si ya existe una fila para esta key con instancia registrada →
-         validate (no consume activación) y se devuelve el token existente.
+         validate (no consume activación). Si Lemon la reporta vigente se
+         devuelve el token; si la fila estaba revocada, se RESTAURA el plan
+         y se emite token nuevo. Si Lemon la reporta no vigente → 403 y se
+         revoca la fila.
          Esto permite reinstalar la extensión / usar un segundo dispositivo
-         sin gastar activaciones.
+         sin gastar activaciones, y volver después de una cancelación.
       2) Primera vez → activate contra Lemon (consume 1 activación; respeta el
          activation_limit configurado en el dashboard). Se verifica store_id y
          se mapea la variante al plan antes de emitir el token.
 
-    La revocación por cancelación/expiración de la suscripción sigue a cargo del
-    webhook (/v3/upgrade con plan=free); acá solo se corta el acceso si Lemon
-    reporta la licencia como no válida al revalidarla.
+    Este endpoint es también el mecanismo de REVOCACIÓN: la extensión lo
+    llama periódicamente (cada ~12 h) con la license_key guardada. Lemon es
+    la fuente de verdad sobre la vigencia de la suscripción. El webhook ya
+    no participa: /v3/upgrade quedó sin usar para este flujo.
     """
     key = req.license_key.strip()
     if not key:
@@ -729,6 +733,27 @@ async def activate_license(req: ActivateRequest, request: Request):
                 instance_id=existing.license_instance_id
             )
             if res.get("valid"):
+                # La licencia está vigente. Si la fila había sido revocada
+                # (plan free / sin token, por una cancelación o un disable
+                # posteriormente revertido), hay que RESTAURARLA: devolver el
+                # estado revocado con 200 dejaba al usuario sin token y sin
+                # error, imposibilitando volver después de reactivar el pago.
+                meta = res.get("meta") or {}
+                plan = _plan_from_variant(meta.get("variant_id")) or existing.plan
+                if plan in PLAN_LIMITS:
+                    if existing.plan != plan:
+                        existing.plan = plan
+                    existing.analyses_limit = PLAN_LIMITS[plan]
+                    existing.is_active = True
+                    if not existing.pro_token:
+                        existing.pro_token = generate_pro_token()
+                    db.commit()
+                    db.refresh(existing)
+
+                # Guard: nunca devolver 200 sin token utilizable.
+                if not existing.pro_token or existing.plan not in PLAN_LIMITS:
+                    raise HTTPException(403, "No se pudo restaurar el plan de esta licencia. Escribinos a soporte@chenuke.com")
+
                 return {
                     "status": "ok",
                     "plan": existing.plan,
