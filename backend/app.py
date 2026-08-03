@@ -1170,21 +1170,48 @@ y debés reportarla.
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.7,
-                    # deepseek-v4-pro es razonador: consume presupuesto en el
-                    # razonamiento interno ANTES de escribir. Con poco margen
-                    # devuelve content vacío. Se le da aire de sobra.
-                    max_tokens=2000 if plan == "pro" else 5000,
+                    # El informe es una tarea de REDACCIÓN, no de razonamiento.
+                    # Con thinking activo, el CoT del modelo consume el
+                    # presupuesto de max_tokens ANTES de escribir y devuelve
+                    # content vacío con finish_reason "length". Se desactiva:
+                    # el modelo escribe directo → más rápido, más barato y sin
+                    # vacíos. (Confirmado en la doc de DeepSeek para el cliente
+                    # openai vía extra_body.)
+                    max_tokens=3000 if plan == "pro" else 6000,
+                    extra_body={"thinking": {"type": "disabled"}},
                 )
             ),
             timeout=45.0
         )
 
-        report_text = (response.choices[0].message.content or "").strip()
+        choice = response.choices[0]
+        report_text = (choice.message.content or "").strip()
+        finish = getattr(choice, "finish_reason", None)
 
-        # Guard: un informe vacío NUNca se guarda, cachea ni cobra como éxito.
+        # Diagnóstico: cuántos tokens se fueron en razonamiento (si el modelo
+        # ignorara el disable) vs. en el texto final.
+        reasoning_tokens = None
+        try:
+            reasoning_tokens = response.usage.completion_tokens_details.reasoning_tokens
+        except Exception:
+            pass
+
+        # Guard: un informe vacío NUNCA se guarda, cachea ni cobra como éxito.
         if not report_text:
-            logger.error(f"DeepSeek devolvió contenido vacío (modelo {model}, tokens: {response.usage.total_tokens})")
+            logger.error(
+                f"DeepSeek content vacío (modelo {model}, finish={finish}, "
+                f"total={response.usage.total_tokens}, reasoning={reasoning_tokens})"
+            )
             raise HTTPException(502, "La IA no devolvió contenido. Reintentá en unos segundos.")
+
+        if finish == "length":
+            # Texto truncado por límite de tokens: usable pero incompleto. Se
+            # sirve igual (mejor un informe cortado que ninguno) y se registra
+            # para subir max_tokens si se vuelve frecuente.
+            logger.warning(
+                f"Informe truncado por max_tokens (modelo {model}, "
+                f"total={response.usage.total_tokens}, reasoning={reasoning_tokens})"
+            )
 
         logger.info(f"Informe generado para plan {plan}, modelo {model}, tokens: {response.usage.total_tokens}")
 
@@ -1199,6 +1226,7 @@ y debés reportarla.
         try:
             h = req.heuristic or {}
             a = h.get("analysis", h) or {}
+            pro = a.get("pro") or {}
             heuristic_snapshot = json.dumps({
                 "structural_index": a.get("structural_index"),
                 "level": a.get("level"),
@@ -1207,6 +1235,10 @@ y debés reportarla.
                     {"label": s.get("label"), "detail": s.get("detail"), "module": s.get("module")}
                     for s in (a.get("signals") or [])[:6]
                 ],
+                # Desglose por módulo (score, peso, aporte). Lo consume la ficha
+                # del motor en ia-report.html. Sin esto la página no puede mostrar
+                # el desglose aunque el popup sí lo tenga.
+                "dimensions": pro.get("dimensions") or {},
                 "title": req.title or "",
                 "url": req.url or "",
             }, ensure_ascii=False)
