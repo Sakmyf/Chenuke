@@ -261,7 +261,12 @@ _GENERIC_REVIEWS_RE = re.compile(
     r"\d{3,} reviews"
     r"|\d{3,} opiniones"
     r"|\d{1,3},\d{3}\s*(?:task\s*)?reviews"
-    r"|\d{1,3},\d{3}"
+    # Se quitó el patrón de número suelto de miles (\d{1,3},\d{3}): matcheaba
+    # CUALQUIER cifra ("84.717 visas", "1,500 permisos") en notas económicas
+    # o administrativas, disparando "cifras genéricas de marketing" donde solo
+    # había un dato periodístico. Causaba falsos positivos en portales de
+    # noticias. Las cifras de reseña real quedan cubiertas por los patrones
+    # explícitos ("N reviews", "N clientes satisfechas", etc.).
     r"|\d+\s+(?:clientes|usuarios|personas)\s+(?:satisfechas|contentas)\s+(?:ya\s+)?(?:compraron|confían)"
     r"|testimonios\s+reales\s+de\s+clientes"
     r"|casos\s+de\s+éxito\s+(?:reales|comprobados)",

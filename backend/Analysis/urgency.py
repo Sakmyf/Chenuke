@@ -23,11 +23,19 @@ _URGENCY_PHRASE_RE: Final[list[re.Pattern]] = [
         r"antes (?:de )?que lo borren", r"solo\s+por\s+hoy",
         r"tiempo\s+limitado", r"decisión\s+inmediata",
         # Nuevas frases de escasez
-        r"solo\s+quedan\s+\d+\s+(?:unidades|cupos|lugares)",
-        r"oferta\s+limitada\s+(?:a\s+las\s+\d+|hasta\s+agotar\s+stock)",
-        r"(?:stock|cupos)\s+limitados",
-        r"(?:última|últimas)\s+(?:oportunidad|chance|chances?)",
+        r"solo\s+quedan\s+\d+\s+(?:unidades|cupos|lugares|plazas)",
+        r"oferta\s+limitada\s+(?:a\s+las\s+\d+|hasta\s+agotar\s+stock|hasta\s+fin\s+de)",
+        r"(?:stock|cupos|plazas|existencias)\s+limitad[oa]s",
+        r"(?:última|últimas)\s+(?:oportunidad|chance|chances?|plazas?)",
         r"no\s+te\s+lo\s+pierdas",
+        # Variantes España peninsular
+        r"date\s+prisa", r"corre\s+antes\s+de\s+que", r"¡?corre!?",
+        r"no\s+dejes\s+pasar\s+esta", r"solo\s+hoy",
+        r"aprovecha\s+ahora", r"reserva\s+ya\s+(?:tu|el)",
+        # Variantes México / Colombia (tuteo + léxico)
+        r"aprovecha\s+ya", r"no\s+esperes\s+más",
+        r"apúrate", r"corre\s+la\s+voz",
+        r"solo\s+por\s+tiempo\s+limitado",
     )
 ]
 
@@ -42,7 +50,10 @@ _URGENCY_TOKEN_RE: Final[list[re.Pattern]] = [
         r"\bno\s+(?:pierdas|pierde|pierdan)\b",
         r"\baprovech[aeá]\b",
         r"\bantes\s+de\s+que\s+termine\b",
-        r"\bno\s+te\s+quedes\s+sin\s+tu\s+(?:cupo|lugar|unidad)\b",
+        r"\bno\s+te\s+quedes\s+sin\s+tu\s+(?:cupo|lugar|unidad|plaza)\b",
+        # Imperativos de escasez en tuteo (MX/CO/ES)
+        r"\bno\s+te\s+quedes\s+sin\s+el\s+tuyo\b",
+        r"\breserva\s+(?:ya|ahora|hoy)\b",
     )
 ]
 

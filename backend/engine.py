@@ -41,7 +41,7 @@ GLOBAL_EXECUTOR = ThreadPoolExecutor(
 )
 
 
-ENGINE_VERSION = "15.28-threshold"
+ENGINE_VERSION = "15.29-latam"
 
 # Fail-closed: si fallan más de este número de módulos ponderados,
 # el análisis no es confiable y se devuelve level "error" en vez de
@@ -487,8 +487,17 @@ def _apply_critical_floors(
     if news_like and not financial_landing:
         return risk_score
 
+    # El piso fuerte de commercial_risk "alto" (0.52) solo aplica si hay
+    # señal financiera/landing REAL (roi_detected o financial_landing), no
+    # por el mero nivel del módulo: commercial_risk puede dar "alto" por
+    # acumulación de ruido (cifras, banners de un portal), y sin esta
+    # condición una nota económica de un diario (ej. "84.717 visas") caía
+    # en amarillo/rojo. Si el nivel es alto pero NO hay landing financiera,
+    # se lo trata como señal media (0.32), no como riesgo alto.
     if comm_data.get("level") == "alto" and not news_like:
-        return max(risk_score, 0.52)
+        if financial_landing or roi_detected:
+            return max(risk_score, 0.52)
+        return max(risk_score, 0.32)
 
     # v15.28 — Compensación de la suba del corte bajo/medio (0.20→0.30):
     # el ecommerce con urgencia real ("AHORRO FLASH", "SOLO X HOY")

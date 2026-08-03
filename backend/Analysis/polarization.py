@@ -13,11 +13,24 @@ from backend.Analysis.rules_types import RuleResult
 
 _POLARIZATION_RE: Final[list[re.Pattern]] = [
     re.compile(p, re.IGNORECASE) for p in (
-        r"ellos vs nosotros",
-        r"la élite",
-        r"el sistema",
-        r"todos están en contra",
-        r"los verdaderos culpables",
+        # Contraposición explícita nosotros/ellos.
+        r"ellos\s+(?:vs\.?|versus|contra|o)\s+nosotros",
+        r"nosotros\s+(?:vs\.?|versus|contra|o)\s+ellos",
+        # Falso dilema "o estás con X o estás con Y" (con el pueblo /
+        # con la patria / con nosotros, contra el régimen / la casta).
+        r"o\s+est[áa]s?\s+con\s+.{1,25}?\s+o\s+(?:est[áa]s?\s+)?con",
+        r"con\s+(?:el\s+pueblo|la\s+patria|nosotros)\s+o\s+con",
+        # "el sistema/la élite/la casta" SOLO cuando el verbo revela la
+        # oposición (te tienen, te controla, está en contra), no cuando
+        # es un sustantivo neutro ("sistema de transporte", "élite
+        # deportiva"). Evita el falso positivo de portales de noticias.
+        r"(?:el\s+sistema|la\s+[ée]lite|la\s+casta)\s+(?:te|nos|los|las|me)\s+\w+",
+        r"(?:el\s+sistema|la\s+[ée]lite|la\s+casta)\s+(?:est[áa]\s+en\s+contra|quiere\s+(?:que|verte)|no\s+quiere)",
+        # Totalizadores de conflicto (mantienen la firma polarizante).
+        r"todos\s+est[áa]n\s+en\s+(?:tu\s+)?contra",
+        r"los\s+verdaderos\s+culpables\s+son",
+        r"el\s+(?:r[ée]gimen|sistema)\s+corrupto",
+        r"el\s+silencio\s+es\s+complicidad",
     )
 ]
 

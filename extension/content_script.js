@@ -1,13 +1,15 @@
-// content_script.js — Chenuke v15.28
+// content_script.js — Chenuke v15.29
 // Extrae texto útil de páginas, landings, formularios y artículos.
 // NO modifica el DOM ni inyecta UI propia.
 //
 // v15.28: se dejan de extraer atributos técnicos del DOM (name, id, value,
-// placeholder) y elementos de formulario. Sólo viaja texto que el usuario
-// ve. Motivo: un análisis de Facebook terminó incluyendo los campos del
-// formulario de login ("email", "pass", "lgnjs"), lo que contaminaba la
-// calibración, inflaba el largo del texto y mandaba estructura de interfaz
-// al backend y a la IA.
+// placeholder) y elementos de formulario ("email", "pass", "lgnjs").
+// v15.29: se filtra CÓDIGO CRUDO. textContent de <section>/<li> incluía
+// scripts inline embebidos (ej: 'var ba147url="...botmaker...init.js"'),
+// que entraban al análisis como "narrativa" y ensuciaban el informe de
+// sitios oficiales. Ahora: se saltan nodos dentro de script/style/etc.,
+// se prefiere innerText, y pushUnique descarta fragmentos con firma de
+// JS/CSS/markup.
 
 'use strict';
 
@@ -38,6 +40,33 @@
     'meta[name="twitter:description"]'
   ].join(',');
 
+  // Nodos cuyo texto NUNCA es discurso: código, estilos, plantillas.
+  // textContent los incluiría (a diferencia de innerText), metiendo JS
+  // crudo como "var ba147url=..." en el análisis. Se descartan a nivel
+  // de elemento y de ancestro.
+  const NOISE_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'CODE', 'PRE']);
+
+  function inNoiseNode(el) {
+    let n = el;
+    while (n && n !== document.body) {
+      if (NOISE_TAGS.has(n.tagName)) return true;
+      n = n.parentElement;
+    }
+    return false;
+  }
+
+  // Heurística anti-código: fragmentos con firma de JS/CSS/markup no son
+  // texto que el usuario lee. Evita que un <script> sin envolver o un
+  // bloque de config se cuele como "narrativa".
+  function looksLikeCode(text) {
+    if (!text) return false;
+    if (/\b(?:var|let|const|function)\s+[\w$]+\s*=/.test(text)) return true;
+    if (/https?:\/\/\S+\.(?:js|css)(?:["';)\s]|$)/.test(text)) return true;
+    if (/[{};]\s*$/.test(text) && /[:=(]/.test(text)) return true;
+    if (/<\/?[a-z][\w-]*[^>]*>/i.test(text)) return true;
+    return false;
+  }
+
   function cleanText(value) {
     return String(value || '')
       .replace(/\s+/g, ' ')
@@ -48,6 +77,7 @@
   function pushUnique(parts, seen, value, minLen = 2) {
     const text = cleanText(value);
     if (!text || text.length < minLen) return;
+    if (looksLikeCode(text)) return;   // no dejar pasar JS/CSS/markup crudo
     const key = text.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
@@ -63,6 +93,10 @@
 
   function extractMainText(parts, seen) {
     document.querySelectorAll(MAIN_SELECTORS).forEach((el) => {
+      if (inNoiseNode(el)) return;              // dentro de <script>/<style>/etc.
+      // innerText respeta lo renderizado (ignora scripts); textContent NO,
+      // por eso solo se cae a textContent si innerText viene realmente vacío
+      // Y el resultado no parece código (lo filtra pushUnique igual).
       const text = el.innerText || el.textContent || '';
       pushUnique(parts, seen, text, 20);
     });
