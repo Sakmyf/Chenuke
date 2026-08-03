@@ -1,6 +1,13 @@
-// content_script.js — Chenuke v15.23
+// content_script.js — Chenuke v15.28
 // Extrae texto útil de páginas, landings, formularios y artículos.
 // NO modifica el DOM ni inyecta UI propia.
+//
+// v15.28: se dejan de extraer atributos técnicos del DOM (name, id, value,
+// placeholder) y elementos de formulario. Sólo viaja texto que el usuario
+// ve. Motivo: un análisis de Facebook terminó incluyendo los campos del
+// formulario de login ("email", "pass", "lgnjs"), lo que contaminaba la
+// calibración, inflaba el largo del texto y mandaba estructura de interfaz
+// al backend y a la IA.
 
 'use strict';
 
@@ -16,8 +23,11 @@
     'li', 'td', 'th', 'blockquote', 'figcaption'
   ].join(',');
 
+  // Solo elementos con texto visible para el usuario. NO se incluyen
+  // input/textarea/select/option: sus atributos técnicos (name, id, value)
+  // son markup de la interfaz, no discurso, y contaminan el análisis.
   const ACTION_SELECTORS = [
-    'button', '[role="button"]', 'a', 'label', 'input', 'textarea', 'select', 'option'
+    'button', '[role="button"]', 'a', 'label'
   ].join(',');
 
   const META_SELECTORS = [
@@ -60,18 +70,18 @@
 
   function extractActionAndFormText(parts, seen) {
     document.querySelectorAll(ACTION_SELECTORS).forEach((el) => {
+      // Solo lo que el usuario efectivamente lee en pantalla (o escucha vía
+      // lector de pantalla). Se excluyen a propósito:
+      //   - el.name / el.id  → nombres técnicos del DOM ("email", "pass",
+      //     "lgnjs"). No son discurso: inflan el largo del texto, disparan
+      //     falsos positivos y mandan estructura de formularios de sesión
+      //     al backend y a la IA. Fueron la causa de que un análisis de
+      //     Facebook incluyera campos de login.
+      //   - el.getAttribute('value') → idem para botones.
       pushUnique(parts, seen, el.innerText || el.textContent || '', 2);
-      pushUnique(parts, seen, el.getAttribute('placeholder'), 2);
       pushUnique(parts, seen, el.getAttribute('aria-label'), 2);
       pushUnique(parts, seen, el.getAttribute('title'), 2);
       pushUnique(parts, seen, el.getAttribute('alt'), 2);
-
-      const type = (el.getAttribute('type') || '').toLowerCase();
-      if (type === 'submit' || type === 'button') {
-        pushUnique(parts, seen, el.getAttribute('value'), 2);
-      }
-      if (el.name) pushUnique(parts, seen, el.name, 2);
-      if (el.id) pushUnique(parts, seen, el.id, 2);
     });
   }
 
