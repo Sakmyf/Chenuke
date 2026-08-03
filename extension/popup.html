@@ -57,18 +57,18 @@
         El informe completo incluye desglose por dimensión y citas textuales.
       </div>
 
-      <div id="proMetrics" class="hidden" aria-label="Métricas detalladas">
-        <div class="pro-title">Métricas detalladas</div>
+      <details id="proMetrics" class="pro-details hidden">
+        <summary class="pro-summary" id="proMetricsSummary">Métricas detalladas</summary>
         <ul id="proList" class="pro-list" role="list"></ul>
-      </div>
+      </details>
 
       <details id="proBreakdown" class="pro-details hidden">
-        <summary class="pro-summary">Desglose por módulo</summary>
+        <summary class="pro-summary" id="proBreakdownSummary">Desglose por módulo</summary>
         <ul id="proDimList" class="dim-list" role="list"></ul>
       </details>
 
       <details id="proSignals" class="pro-details hidden">
-        <summary class="pro-summary">Señales detectadas</summary>
+        <summary class="pro-summary" id="proSignalsSummary">Señales detectadas</summary>
         <div id="proSignalList" class="sig-list"></div>
       </details>
 

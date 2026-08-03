@@ -387,6 +387,17 @@ document.addEventListener("DOMContentLoaded", async () => {
             proDimList.appendChild(li);
         });
 
+        // Summary con adelanto: "Desglose por módulo · N con señal".
+        // Un summary colapsado que muestra el dato invita a expandir sin
+        // ocupar espacio (y le muestra al usuario que hay contenido dentro).
+        const sum = document.getElementById("proBreakdownSummary");
+        if (sum) {
+            const activos = rows.filter((r) => (r.score ?? 0) > 0).length;
+            sum.textContent = activos > 0
+                ? "Desglose por módulo · " + activos + " con señal"
+                : "Desglose por módulo";
+        }
+
         proBreakdown.classList.remove("hidden");
     }
 
@@ -424,6 +435,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
             proSignalList.appendChild(row);
         });
+
+        const sum = document.getElementById("proSignalsSummary");
+        if (sum) {
+            sum.textContent = "Señales detectadas · " + rows.length;
+        }
 
         proSignals.classList.remove("hidden");
     }
@@ -1117,6 +1133,21 @@ document.addEventListener("DOMContentLoaded", async () => {
                     li.style.fontStyle = "italic";
                     li.textContent = "Métricas detalladas no disponibles";
                     proList.appendChild(li);
+                }
+
+                // Summary con adelanto: "Métricas detalladas · N en alerta".
+                // Cuenta manipulacion/emocionalidad altas (>50) — las que
+                // indican riesgo. evidencia/coherencia altas son buenas, no
+                // cuentan como alerta.
+                const sumM = document.getElementById("proMetricsSummary");
+                if (sumM) {
+                    const m = analysis.metrics || {};
+                    const alerta =
+                        ((+m.manipulacion || 0) > 50 ? 1 : 0) +
+                        ((+m.emocionalidad || 0) > 50 ? 1 : 0);
+                    sumM.textContent = alerta > 0
+                        ? "Métricas detalladas · " + alerta + " en alerta"
+                        : "Métricas detalladas";
                 }
             }
 
