@@ -41,7 +41,7 @@ GLOBAL_EXECUTOR = ThreadPoolExecutor(
 )
 
 
-ENGINE_VERSION = "15.27-fail-closed"
+ENGINE_VERSION = "15.28-threshold"
 
 # Fail-closed: si fallan más de este número de módulos ponderados,
 # el análisis no es confiable y se devuelve level "error" en vez de
@@ -490,6 +490,16 @@ def _apply_critical_floors(
     if comm_data.get("level") == "alto" and not news_like:
         return max(risk_score, 0.52)
 
+    # v15.28 — Compensación de la suba del corte bajo/medio (0.20→0.30):
+    # el ecommerce con urgencia real ("AHORRO FLASH", "SOLO X HOY")
+    # promedia ~0.25 y habría caído a verde. Si commercial_risk lo
+    # clasifica medio, se lo sostiene en amarillo. `not news_like`
+    # evita re-castigar a la nota que INFORMA sobre ofertas o estafas.
+    # Nota: la página antifraude del banco NO dispara commercial_risk,
+    # así que este piso no la alcanza — cae a verde, que es el objetivo.
+    if comm_data.get("level") == "medio" and not news_like:
+        return max(risk_score, 0.32)
+
     return risk_score
 
 
@@ -721,7 +731,19 @@ def analyze_context(
             level = "alto"
             message = "Presión narrativa significativa detectada"
 
-        elif normalized_risk >= 0.20:
+        # v15.28 — Corte bajo/medio: 0.20 → 0.30.
+        # El 0.20 era coherente con el motor PRE-pisos, cuando lo
+        # verdaderamente riesgoso se quedaba en ~20 por el promedio
+        # ponderado (14 módulos × ~0.07). Hoy los pisos críticos
+        # (0.62/0.60/0.52/0.38) empujan todo lo malo muy por encima
+        # de 0.30, así que un promedio de 0.20-0.29 SIN ningún piso
+        # activado es, por diseño, ruido acumulado — típicamente un
+        # texto que DESCRIBE una técnica (página antifraude de un
+        # banco: 23) o una nota con vocabulario cargado (encuesta
+        # política: 20). Ambos falsos positivos verificados con
+        # texto real. La estafa de referencia da 81 y el control 11:
+        # ninguno se entera del cambio.
+        elif normalized_risk >= 0.30:
             level = "medio"
             message = "Señales mixtas — lectura crítica recomendada"
 
