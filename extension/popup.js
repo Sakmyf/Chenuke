@@ -8,15 +8,10 @@ const REGISTER_URL = "https://chenuke-production-8e78.up.railway.app/v3/register
 const ACTIVATE_URL = "https://chenuke-production-8e78.up.railway.app/v3/activate";
 
 const API_TIMEOUT = 30000;
-// El informe IA tarda más que un análisis heurístico: el modelo razona
-// antes de escribir. Debe ser mayor que el timeout del backend (45s)
-// o el popup aborta una request que iba a completarse bien.
 const AI_TIMEOUT = 60000;
 const MAX_RETRIES = 2;
 const CACHE_TTL = 30000;
 const RETRY_HTTP_STATUS = [502, 503, 504];
-// Al abrir el popup, si pasó este tiempo desde la última revalidación de
-// licencia, disparamos una nueva contra el service worker (que decide).
 const REVALIDATE_THROTTLE_MS = 12 * 60 * 60 * 1000;
 
 let lastResult = null;
@@ -24,16 +19,13 @@ let extensionPlan = "free";
 let proToken = null;
 
 // ======================================================
-// REGISTRO DE EXTENSIÓN (al cargar el popup)
+// REGISTRO DE EXTENSIÓN
 // ======================================================
 async function registerExtension() {
-    // Fuente de verdad local del plan/token = storage (lo escribe /v3/activate).
     const stored = await chrome.storage.local.get(["extension_plan", "pro_token"]);
     extensionPlan = stored.extension_plan || "free";
     proToken = stored.pro_token || null;
 
-    // /v3/register es SOLO telemetría de instalación: nunca devuelve token
-    // ni debe pisar el estado de activación. Best-effort, no bloquea la UI.
     try {
         const extId = chrome.runtime.id;
         await fetch(REGISTER_URL, {
@@ -48,7 +40,7 @@ async function registerExtension() {
 }
 
 // ======================================================
-// FUNCIONES EXISTENTES
+// FUNCIONES AUXILIARES Y DATO/API
 // ======================================================
 
 async function buildHeaders() {
@@ -138,41 +130,25 @@ async function setCachedResult(url, data) {
 function obtenerColorPorcentaje(valor, metrica) {
     const m = String(metrica || "").toLowerCase();
 
-    if (m.includes("emocionalidad") || m.includes("emotionality")) {
-        if (valor > 70) return "#ef4444";
-        if (valor > 40) return "#facc15";
-        return "#4ade80";
+    if (m.includes("emocionalidad") || m.includes("emotionality") || m.includes("manipulación") || m.includes("manipulacion") || m.includes("manipulation")) {
+        if (valor > 70) return "var(--danger)";
+        if (valor > 40) return "var(--warning)";
+        return "var(--success)";
     }
 
-    if (m.includes("manipulación") || m.includes("manipulacion") || m.includes("manipulation")) {
-        if (valor > 70) return "#ef4444";
-        if (valor > 40) return "#facc15";
-        return "#4ade80";
+    if (m.includes("evidencia") || m.includes("evidence") || m.includes("coherencia") || m.includes("coherence")) {
+        if (valor < 40) return "var(--danger)";
+        if (valor < 70) return "var(--warning)";
+        return "var(--success)";
     }
 
-    if (m.includes("evidencia") || m.includes("evidence")) {
-        if (valor < 40) return "#ef4444";
-        if (valor < 70) return "#facc15";
-        return "#4ade80";
-    }
-
-    if (m.includes("coherencia") || m.includes("coherence")) {
-        if (valor < 40) return "#ef4444";
-        if (valor < 70) return "#facc15";
-        return "#4ade80";
-    }
-
-    return "#f1f5f9";
+    return "var(--text)";
 }
 
 // ======================================================
-// ACTUALIZAR BOTÓN DE IA SEGÚN PLAN
+// ESTADO BOTÓN IA
 // ======================================================
 
-// El score real vive en lastResult.analysis.structural_index
-// (la respuesta de /v3/verify: { analysis: {...}, meta: {...} }).
-// level error/insuficiente/skipped no tienen score → no hay ancla
-// para el informe IA.
 function hasValidResult() {
     const idx = lastResult?.analysis?.structural_index;
     return typeof idx === "number" && isFinite(idx);
@@ -184,9 +160,6 @@ function updateAIButton(plan) {
     if (!aiBtnText || !aiBtn) return;
 
     if (plan === "pro" || plan === "premium") {
-        // El informe IA está anclado al motor (gate ETHICS regla 6):
-        // sin un análisis con score real, no hay nada que redactar.
-        // Se atenúa en vez de ofrecer algo que va a terminar en error.
         if (hasValidResult()) {
             aiBtnText.textContent = "🤖 Analizar con IA";
             aiBtn.disabled = false;
@@ -201,20 +174,12 @@ function updateAIButton(plan) {
     } else {
         aiBtnText.textContent = "🔒 Actualizar a PRO";
         aiBtn.disabled = false;
-        aiBtn.style.opacity = "0.8";
+        aiBtn.style.opacity = "1";
     }
 }
 
 // ======================================================
-// ANÁLISIS CON IA (DEEPSEEK)
-// runAIAnalysis vive DENTRO de DOMContentLoaded: necesita
-// extractPageContent / fetchWithTimeout / showError, que están
-// en ese scope. (Fix v0.5.2: definirla acá causaba ReferenceError
-// silencioso al clickear "Analizar con IA".)
-// ======================================================
-
-// ======================================================
-// FUNCIONES EXISTENTES (continuación)
+// EVENTO DOMContentLoaded
 // ======================================================
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -243,15 +208,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     const errorMessage = document.getElementById("errorMessage");
     const retryErrorBtn = document.getElementById("retryErrorBtn");
 
-    // ==========================================================
-    // BLOQUE PRO: desglose por módulo + señales con cita textual
-    // Es lo que index.html vende explícitamente. El backend ya lo
-    // manda en analysis.pro; acá se renderiza.
-    // Los normalizadores toleran que el payload venga como objeto
-    // {modulo: {...}} o como array [{module: "..."}]: si el motor
-    // cambia de forma, el bloque se oculta en vez de romper la UI.
-    // ==========================================================
-
     function toNumber(v) {
         return typeof v === "number" && isFinite(v) ? v : null;
     }
@@ -260,8 +216,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         return Math.max(0, Math.min(100, Math.round(n)));
     }
 
-    // engine.py → pro.dimensions:
-    //   { modulo: { score: 0-100 int, weight: 0-1 float, weighted_contribution: float } }
     function normalizeDimensions(dims) {
         const out = [];
         if (!dims || typeof dims !== "object" || Array.isArray(dims)) return out;
@@ -279,18 +233,13 @@ document.addEventListener("DOMContentLoaded", async () => {
             });
         });
 
-        // Orden por aporte real al índice: lo que más pesó, arriba.
         return out.sort((a, b) => (b.contrib ?? 0) - (a.contrib ?? 0));
     }
 
-    // engine.py → pro.signals_by_module:
-    //   { modulo: { score: 0-100 int, signals: [ { label, evidence } ] } }
-    // Fallback: analysis.signals (plano) → [ { label, detail, module } ]
     function normalizeModuleSignals(sbm) {
         const out = [];
         if (!sbm) return out;
 
-        // Forma plana (fallback)
         if (Array.isArray(sbm)) {
             sbm.forEach((s) => {
                 if (!s || typeof s !== "object" || !s.label) return;
@@ -361,13 +310,12 @@ document.addEventListener("DOMContentLoaded", async () => {
             const fill = document.createElement("div");
             fill.className = "dim-fill";
             fill.style.width = rel + "%";
-            // En los módulos del motor, score alto = más señal de riesgo.
-            // (obtenerColorPorcentaje solo conoce las 4 métricas resumidas.)
+
             if (scorePct !== null) {
                 fill.style.background =
-                    scorePct > 70 ? "#ef4444" :
-                    scorePct > 40 ? "#facc15" :
-                    scorePct > 10 ? "#4ade80" : "#64748b";
+                    scorePct > 70 ? "var(--danger)" :
+                    scorePct > 40 ? "var(--warning)" :
+                    scorePct > 10 ? "var(--success)" : "var(--border)";
             }
             bar.appendChild(fill);
 
@@ -387,9 +335,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             proDimList.appendChild(li);
         });
 
-        // Summary con adelanto: "Desglose por módulo · N con señal".
-        // Un summary colapsado que muestra el dato invita a expandir sin
-        // ocupar espacio (y le muestra al usuario que hay contenido dentro).
         const sum = document.getElementById("proBreakdownSummary");
         if (sum) {
             const activos = rows.filter((r) => (r.score ?? 0) > 0).length;
@@ -444,7 +389,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         proSignals.classList.remove("hidden");
     }
 
-    // Botón IA
     async function runAIAnalysis() {
         const userPlan = lastResult?.meta?.plan || extensionPlan || "free";
         const aiBtn = document.getElementById("aiAnalyzeBtn");
@@ -457,10 +401,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const originalText = aiBtnText.textContent;
 
-        // El prompt del informe IA está anclado al nivel del motor (regla 6
-        // del gate ETHICS). Sin análisis previo válido, el backend recibiría
-        // heuristic:null → 422 ("Input should be a valid dictionary").
-        // Mandar {} sería peor: la IA escribiría sin ancla.
         if (!hasValidResult()) {
             showError("Analizá la página antes de generar el informe con IA.");
             return;
@@ -497,12 +437,11 @@ document.addEventListener("DOMContentLoaded", async () => {
                     if (typeof d === "string") {
                         detail = d;
                     } else if (Array.isArray(d)) {
-                        // 422 de FastAPI: detail es un array de objetos
                         detail = d.map(e => e?.msg || JSON.stringify(e)).join(" · ");
                     } else if (d) {
                         detail = JSON.stringify(d);
                     }
-                } catch (_) { /* respuesta sin JSON: queda el código */ }
+                } catch (_) {}
                 throw new Error(detail);
             }
 
@@ -522,9 +461,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     function showAIReport(data) {
-        // El informe viaja por ID (report_key), nunca por URL:
-        // las URLs largas se cortaban en el servidor y el contenido
-        // por query string permitía fabricar informes truchos.
         if (data && data.report_key) {
             chrome.tabs.create({ url: `https://chenuke.com/ia-report.html?k=${encodeURIComponent(data.report_key)}` });
         } else {
@@ -538,7 +474,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     // ============================================================
-    // ACTIVACIÓN POR LICENSE KEY (/v3/activate)
+    // ACTIVACIÓN Y LICENCIA
     // ============================================================
     const activateSection = document.getElementById("activateSection");
     const licenseInput = document.getElementById("licenseInput");
@@ -557,7 +493,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         activateStatus.classList.remove("hidden");
         activateStatus.style.color =
-            kind === "ok" ? "#4ade80" : kind === "error" ? "#f87171" : "#94a3b8";
+            kind === "ok" ? "var(--success)" : kind === "error" ? "var(--danger)" : "var(--muted)";
     }
 
     function refreshActivationUI() {
@@ -594,8 +530,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
             proToken = data.pro_token;
             extensionPlan = data.plan || "pro";
-            // Guardamos la license_key para poder revalidarla luego (revocación
-            // por cancelación). license_last_check evita revalidar de más.
+
             await chrome.storage.local.set({
                 pro_token: proToken,
                 extension_plan: extensionPlan,
@@ -653,15 +588,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     refreshActivationUI();
 
-    // --- Revalidación de licencia al abrir (con throttle) ---
-    // Si el plan es pago y pasó el throttle, le pedimos al service worker que
-    // revalide contra Lemon. El worker decide: solo un 403 revoca. Acá solo
-    // reflejamos su resultado en la UI. Best-effort, no bloquea nada.
     (async () => {
         try {
             if (extensionPlan !== "pro" && extensionPlan !== "premium") return;
             const st = await chrome.storage.local.get(["license_key", "license_last_check"]);
-            if (!st.license_key) return; // activación previa sin key guardada
+            if (!st.license_key) return;
             const age = Date.now() - (st.license_last_check || 0);
             if (age < REVALIDATE_THROTTLE_MS) return;
 
@@ -687,14 +618,15 @@ document.addEventListener("DOMContentLoaded", async () => {
                 updateAIButton(extensionPlan);
                 refreshActivationUI();
             }
-        } catch (e) { /* best-effort */ }
+        } catch (e) {}
     })();
 
     function showError(message) {
         if (labelBadge) {
             labelBadge.textContent = message;
-            labelBadge.style.background = "rgba(239,68,68,0.2)";
-            labelBadge.style.color = "#f87171";
+            labelBadge.removeAttribute("data-level");
+            labelBadge.style.background = "";
+            labelBadge.style.color = "";
         }
         if (scoreEl) scoreEl.textContent = "--";
         if (confEl) confEl.textContent = "--";
@@ -718,8 +650,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (scanLine) scanLine.classList.add("active");
         if (labelBadge) {
             labelBadge.textContent = "Analizando contenido...";
-            labelBadge.style.background = "#333";
-            labelBadge.style.color = "#aaa";
+            labelBadge.removeAttribute("data-level");
+            labelBadge.style.background = "";
+            labelBadge.style.color = "";
         }
         if (summaryBox) summaryBox.classList.add("hidden");
         if (scoreEl) scoreEl.textContent = "--";
@@ -860,9 +793,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             if (!force) {
                 const cached = await getCachedResult(tab.url);
                 if (cached) {
-                    // Restaurar lastResult: sin esto, con un resultado cacheado
-                    // en pantalla el botón IA quedaba deshabilitado y el guard
-                    // de heuristic bloqueaba el informe.
                     lastResult = cached;
                     renderResult(cached, true);
                     stopScanUI();
@@ -908,7 +838,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     // ============================================================
-    // RENDER RESULTADO (CORREGIDO)
+    // RENDER RESULTADO (ADAPTADO AL CSS DE LA WEB)
     // ============================================================
     function renderResult(data, fromCache = false) {
         hideError();
@@ -933,8 +863,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (data?.status === "skipped" || level === "none") {
             if (labelBadge) {
                 labelBadge.textContent = "⚪ No analizado";
-                labelBadge.style.background = "rgba(148,163,184,0.18)";
-                labelBadge.style.color = "#cbd5e1";
+                labelBadge.removeAttribute("data-level");
+                labelBadge.style.background = "";
+                labelBadge.style.color = "";
             }
             if (scoreEl) scoreEl.textContent = "—";
             if (confEl) confEl.textContent = "—";
@@ -954,8 +885,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (level === "insuficiente") {
             if (labelBadge) {
                 labelBadge.textContent = "⚪ Texto insuficiente";
-                labelBadge.style.background = "rgba(148,163,184,0.18)";
-                labelBadge.style.color = "#cbd5e1";
+                labelBadge.removeAttribute("data-level");
+                labelBadge.style.background = "";
+                labelBadge.style.color = "";
             }
             if (scoreEl) scoreEl.textContent = "—";
             if (confEl) confEl.textContent = "—";
@@ -975,8 +907,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (level === "alerta_breve") {
             if (labelBadge) {
                 labelBadge.textContent = "⚠️ Texto breve — precaución";
-                labelBadge.style.background = "rgba(250,204,21,0.18)";
-                labelBadge.style.color = "#facc15";
+                labelBadge.setAttribute("data-level", "medio");
+                labelBadge.style.background = "";
+                labelBadge.style.color = "";
             }
             if (scoreEl) scoreEl.textContent = "!";
             if (confEl) confEl.textContent = "—";
@@ -993,14 +926,12 @@ document.addEventListener("DOMContentLoaded", async () => {
             return;
         }
 
-        // v0.5.2 — el motor puede devolver level "error" (fail-closed).
-        // Sin esta rama caía en el else final y se pintaba "Alto riesgo":
-        // un error del motor disfrazado de resultado.
         if (level === "error") {
             if (labelBadge) {
                 labelBadge.textContent = "⚪ Análisis no disponible";
-                labelBadge.style.background = "rgba(148,163,184,0.18)";
-                labelBadge.style.color = "#cbd5e1";
+                labelBadge.removeAttribute("data-level");
+                labelBadge.style.background = "";
+                labelBadge.style.color = "";
             }
             if (scoreEl) scoreEl.textContent = "—";
             if (confEl) confEl.textContent = "—";
@@ -1017,27 +948,30 @@ document.addEventListener("DOMContentLoaded", async () => {
             return;
         }
 
+        // Delegar colores a CSS mediante data-level
         if (level === "bajo" || level === "green") {
             if (labelBadge) {
                 labelBadge.textContent = "🟢 Bajo riesgo";
-                labelBadge.style.background = "rgba(34,197,94,0.2)";
-                labelBadge.style.color = "#4ade80";
+                labelBadge.setAttribute("data-level", "bajo");
+                labelBadge.style.background = "";
+                labelBadge.style.color = "";
             }
         } else if (level === "medio" || level === "yellow") {
             if (labelBadge) {
                 labelBadge.textContent = "🟡 Riesgo moderado";
-                labelBadge.style.background = "rgba(250,204,21,0.2)";
-                labelBadge.style.color = "#facc15";
+                labelBadge.setAttribute("data-level", "medio");
+                labelBadge.style.background = "";
+                labelBadge.style.color = "";
             }
         } else {
             if (labelBadge) {
                 labelBadge.textContent = "🔴 Alto riesgo";
-                labelBadge.style.background = "rgba(239,68,68,0.2)";
-                labelBadge.style.color = "#f87171";
+                labelBadge.setAttribute("data-level", "alto");
+                labelBadge.style.background = "";
+                labelBadge.style.color = "";
             }
         }
 
-        // Obtener score de la respuesta
         let score = analysis.structural_index ?? analysis.score ?? 0;
         if (typeof score === "number") {
             if (score <= 1) {
@@ -1051,14 +985,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const userPlan = data?.meta?.plan || extensionPlan || "free";
 
-        // Sincronizar plan local con la verdad del server (revocación / cambio de plan).
         if (data?.meta?.plan && data.meta.plan !== extensionPlan) {
             extensionPlan = data.meta.plan;
             chrome.storage.local.set({ extension_plan: extensionPlan });
             refreshActivationUI();
         }
 
-        // Mostrar el score en el popup (solo para PRO/PREMIUM)
         if (scoreEl) {
             if (userPlan === "free") {
                 scoreEl.textContent = "—";
@@ -1067,7 +999,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
         }
 
-        // Mostrar confianza
         let conf = analysis.confidence ?? 0;
         if (typeof conf === "number") {
             if (conf <= 1) {
@@ -1080,19 +1011,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         if (confEl) confEl.textContent = conf;
 
-        // Mostrar insight
         if (summaryBox) {
             summaryBox.textContent = analysis.insight || analysis.message || "El contenido no presenta señales relevantes de manipulación o riesgo.";
             summaryBox.classList.remove("hidden");
         }
 
-        // ============================================================
-        // MANEJO DEL BOTÓN "VER ANÁLISIS COMPLETO"
-        // ============================================================
         if (userPlan === "free") {
             if (proSection) proSection.classList.add("locked");
             if (proWarning) proWarning.style.display = "flex";
-            // Ocultar el botón para FREE (no debería aparecer)
             if (upgradeBtn) {
                 upgradeBtn.style.display = "none";
             }
@@ -1102,8 +1028,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         } else {
             if (proSection) proSection.classList.remove("locked");
             if (proWarning) proWarning.style.display = "none";
-            // El detalle completo ya se muestra en este popup (metricas + señales).
-            // La pagina web analysis.html quedo fuera: no aportaba datos nuevos.
             if (upgradeBtn) {
                 upgradeBtn.style.display = "none";
             }
@@ -1121,24 +1045,20 @@ document.addEventListener("DOMContentLoaded", async () => {
                         li.style.alignItems = "center";
                         li.style.padding = "4px 0";
                         li.innerHTML = `
-                            <span style="color:#94a3b8;">${key}</span>
-                            <strong style="color:${color}; font-size:13px;">${numericValue}%</strong>
+                            <span style="color:var(--muted);">${key}</span>
+                            <strong style="color:${color}; font-size:13px; font-family:'JetBrains Mono', monospace;">${numericValue}%</strong>
                         `;
                         proList.appendChild(li);
                     }
                 } else {
                     const li = document.createElement("li");
                     li.style.textAlign = "center";
-                    li.style.color = "#64748b";
+                    li.style.color = "var(--muted)";
                     li.style.fontStyle = "italic";
                     li.textContent = "Métricas detalladas no disponibles";
                     proList.appendChild(li);
                 }
 
-                // Summary con adelanto: "Métricas detalladas · N en alerta".
-                // Cuenta manipulacion/emocionalidad altas (>50) — las que
-                // indican riesgo. evidencia/coherencia altas son buenas, no
-                // cuentan como alerta.
                 const sumM = document.getElementById("proMetricsSummary");
                 if (sumM) {
                     const m = analysis.metrics || {};
@@ -1151,10 +1071,6 @@ document.addEventListener("DOMContentLoaded", async () => {
                 }
             }
 
-            // Desglose por módulo y señales con cita textual.
-            // Si el motor no los mandó (o vinieron vacíos), los bloques
-            // quedan ocultos: nunca se muestra una sección vacía como si
-            // fuera un entregable.
             const proBlock = analysis.pro || {};
             renderDimensions(proBlock.dimensions);
             renderModuleSignals(proBlock.signals_by_module || analysis.signals);
@@ -1162,9 +1078,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         updateAIButton(userPlan);
     }
-
-
-    // --- OTROS EVENT LISTENERS ---
 
     if (analyzeBtn) {
         analyzeBtn.addEventListener("click", () => runAnalysis({ force: true }));
@@ -1190,6 +1103,5 @@ document.addEventListener("DOMContentLoaded", async () => {
         });
     }
 
-    // Iniciar análisis al abrir el popup
     runAnalysis({ force: false });
 });
