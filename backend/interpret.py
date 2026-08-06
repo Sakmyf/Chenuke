@@ -20,13 +20,20 @@ SENALES = {
     "structural":         "usa una estructura tipo clickbait o titular engañoso",
     "logical_fallacies":  "recurre a falacias lógicas (falso dilema, ataque personal)",
     "commercial_risk":    "tiene una intención comercial poco explícita",
-    "credibility":        "presenta señales de baja credibilidad",  # <- confirmá qué detecta
+    # credibility NO mide credibilidad ni evidencia: detecta TONO dramático/
+    # narrativo (lenguaje emocional, dramatización, oraciones largas). La frase
+    # describe eso. Ver regla anti-duplicado con `emotions` más abajo.
+    "credibility":        "está escrito con un tono dramático o novelado",
 }
 
 # Módulos de AUSENCIA de respaldo -> van al cierre, no a la lista principal.
-# 'uncertainty' es el de mayor peso (0.13) y agrupa: datos sin fuente, condicionales
-# excesivos, afirmaciones sin respaldo, hechos recientes sin atribución. <- confirmá.
+# 'uncertainty' agrupa: datos sin fuente, condicionales excesivos, afirmaciones
+# sin respaldo, hechos recientes sin atribución. (credibility NO va acá.)
 EVIDENCIA = {"uncertainty"}
+
+# Módulos cuyo ángulo es emocional. Si dispara más de uno, se usa UNA sola frase
+# (la del primero que aparezca) para no decir dos veces "carga emocional".
+_EMOCIONALES = {"emotions", "credibility"}
 
 # --- Cierre por nivel (reducción de daño GENÉRICA, nunca veredicto del mensaje) ---
 _CIERRE = {
@@ -63,12 +70,28 @@ def interpretar(level: str, signals: List[Dict], max_senales: int = 3) -> dict:
     level = (level or "bajo").lower()
 
     manip, sin_evidencia = [], False
+    emocional_usado = False
+
     for s in signals or []:
         mod = s.get("module")
+
         if mod in EVIDENCIA:
             sin_evidencia = True
-        elif mod in SENALES and SENALES[mod] not in manip and len(manip) < max_senales:
-            manip.append(SENALES[mod])
+            continue
+
+        if mod not in SENALES:
+            continue
+
+        # Anti-duplicado emocional: emotions y credibility comparten el ángulo
+        # "carga emocional". Solo el primero aporta su frase; el segundo se omite.
+        if mod in _EMOCIONALES:
+            if emocional_usado:
+                continue
+            emocional_usado = True
+
+        frase = SENALES[mod]
+        if frase not in manip and len(manip) < max_senales:
+            manip.append(frase)
 
     if manip:
         cuerpo = "Este texto " + _unir(manip)
