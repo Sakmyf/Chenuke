@@ -41,7 +41,7 @@ GLOBAL_EXECUTOR = ThreadPoolExecutor(
 )
 
 
-15.30-interpret-fix
+ENGINE_VERSION = "15.30-interpret-fix"
 
 # Fail-closed: si fallan más de este número de módulos ponderados,
 # el análisis no es confiable y se devuelve level "error" en vez de
